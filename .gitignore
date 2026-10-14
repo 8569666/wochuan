@@ -1,0 +1,66 @@
+# Python environments and generated files
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Frontend dependencies, builds, and tool caches
+node_modules/
+dist/
+build/
+coverage/
+.vite/
+.cache/
+.turbo/
+*.tsbuildinfo
+
+# Local environment files and secrets; keep example templates
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.example.*
+
+# Runtime data, local databases, and backups
+/uploads/
+/backend/uploads/
+/backups/
+/backend/backups/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.dump
+
+# Logs and temporary files
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
