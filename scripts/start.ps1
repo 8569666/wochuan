@@ -35,7 +35,7 @@ try {
     $env:APP_ORIGIN = "http://127.0.0.1:$frontPort"
     $env:API_TARGET = "http://127.0.0.1:$apiPort"
     $env:PYTHONUTF8 = '1'
-    $backendProcess = Start-Process -FilePath $pythonPath -ArgumentList @('-m','uvicorn','app.main:app','--host','127.0.0.1','--port', $apiPort) -WorkingDirectory (Join-Path $projectRoot 'backend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $cachePath "backend.$modeName.log") -RedirectStandardError (Join-Path $cachePath "backend.$modeName.error.log")
+    $backendProcess = Start-Process -FilePath $pythonPath -ArgumentList @('-m','uvicorn','app.main:app','--no-proxy-headers','--host','127.0.0.1','--port', $apiPort) -WorkingDirectory (Join-Path $projectRoot 'backend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $cachePath "backend.$modeName.log") -RedirectStandardError (Join-Path $cachePath "backend.$modeName.error.log")
     $frontendProcess = Start-Process -FilePath $nodePath -ArgumentList @('"' + $vitePath + '"','--host','127.0.0.1','--port',$frontPort,'--strictPort') -WorkingDirectory (Join-Path $projectRoot 'frontend') -WindowStyle Hidden -PassThru -RedirectStandardOutput (Join-Path $cachePath "frontend.$modeName.log") -RedirectStandardError (Join-Path $cachePath "frontend.$modeName.error.log")
     @{BackendId=$backendProcess.Id;FrontendId=$frontendProcess.Id;BackendStarted=$backendProcess.StartTime.ToUniversalTime().Ticks;FrontendStarted=$frontendProcess.StartTime.ToUniversalTime().Ticks;PythonPath=$pythonPath;NodePath=$nodePath} | ConvertTo-Json | Set-Content -LiteralPath $stateFile -Encoding utf8
     Write-Output "后台已启动：http://127.0.0.1:$frontPort（API $apiPort）"

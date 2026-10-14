@@ -7,9 +7,13 @@ from app.modules.catalog.models import SKU, Color, Product, Size, SizeGroup
 
 
 async def validate_color(session, values, existing):
-    if existing and values.get("code", existing.code) != existing.code:
-        await session.execute(select(Color).where(Color.id == existing.id).with_for_update())
-        if await session.scalar(select(SKU.id).where(SKU.color_id == existing.id).limit(1)):
+    if existing and "code" in values:
+        await session.refresh(existing, with_for_update=True)
+        if values["code"] == existing.code:
+            return
+        if await session.scalar(
+            select(SKU.id).where(SKU.color_id == existing.id).limit(1).with_for_update()
+        ):
             raise HTTPException(409, "颜色已被商品引用，编码不能修改")
 
 
@@ -28,11 +32,12 @@ async def save_group(session, user, body, existing=None):
     values = body.model_dump(exclude_unset=bool(existing))
     sizes = values.pop("sizes", None)
     if existing:
-        await session.execute(
-            select(SizeGroup).where(SizeGroup.id == existing.id).with_for_update()
-        )
+        await session.refresh(existing, with_for_update=True)
         referenced = await session.scalar(
-            select(Product.id).where(Product.size_group_id == existing.id).limit(1)
+            select(Product.id)
+            .where(Product.size_group_id == existing.id)
+            .limit(1)
+            .with_for_update()
         )
         if referenced and (sizes is not None or values.get("code", existing.code) != existing.code):
             raise HTTPException(409, "尺码组已被商品引用，编码和尺码项不能修改")
@@ -97,7 +102,10 @@ async def create_product(session, actor, body):
         raise HTTPException(422, "请选择有效尺码组")
     sizes = (
         await session.scalars(
-            select(Size).where(Size.group_id == group.id, Size.status == "ACTIVE")
+            select(Size)
+            .where(Size.group_id == group.id, Size.status == "ACTIVE")
+            .order_by(Size.id)
+            .with_for_update()
         )
     ).all()
     colors = (
