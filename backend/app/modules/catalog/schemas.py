@@ -55,6 +55,8 @@ class SKUCreate(BaseModel):
 
 class ProductFields(ArchiveCreate):
     category: str = Field(min_length=1, max_length=64)
+    category_id: int | None = Field(None, gt=0)
+    fabric_id: int | None = Field(None, gt=0)
     year: int = Field(ge=1900, le=2100)
     season: str = Field(min_length=1, max_length=16)
     wave_band: str | None = Field(None, max_length=32)
@@ -66,6 +68,7 @@ class ProductFields(ArchiveCreate):
 
 
 class ProductCreate(ProductFields):
+    category_id: int = Field(gt=0)
     color_ids: list[int] = Field(min_length=1, max_length=30)
     size_group_id: int = Field(gt=0)
     skus: list[SKUCreate] = Field(min_length=1, max_length=900)
@@ -79,7 +82,30 @@ class SKUPrice(BaseModel):
 
 class ProductUpdate(partial_schema(ProductFields)):
     sku_prices: list[SKUPrice] | None = None
+    new_skus: list[SKUCreate] | None = Field(None, min_length=1, max_length=900)
+
+
+class CategoryCreate(ArchiveCreate):
+    name: str = Field(min_length=1, max_length=64)
+
+
+class FabricCreate(ArchiveCreate):
+    composition: str = Field(min_length=1, max_length=2000)
+
+
+class PreferenceUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ids: list[Annotated[int, Field(gt=0)]] = Field(max_length=10)
+
+    @field_validator("ids")
+    @classmethod
+    def unique_ids(cls, value):
+        if len(set(value)) != len(value):
+            raise ValueError("常用选项不能重复")
+        return value
 
 
 ColorUpdate = partial_schema(ColorCreate)
 SizeGroupUpdate = partial_schema(SizeGroupCreate)
+CategoryUpdate = partial_schema(CategoryCreate)
+FabricUpdate = partial_schema(FabricCreate)

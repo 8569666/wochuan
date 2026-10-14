@@ -1,0 +1,24 @@
+<script setup lang="ts">
+import { computed, ref } from 'vue'
+import { apiRequest } from '../api/client'
+import type { Dictionary } from '../api/types'
+const props=defineProps<{label:string;kind:'colors'|'size-groups';items:Dictionary[];commonIds:number[];modelValue:number[];multiple?:boolean;lockedIds?:number[];disabled?:boolean}>()
+const emit=defineEmits<{'update:modelValue':[number[]];'update:commonIds':[number[]]}>()
+const dialog=ref(false);const editing=ref(false);const draft=ref<number[]>([]);const search=ref('');const busy=ref(false);const error=ref('')
+const common=computed(()=>props.commonIds.map(id=>props.items.find(item=>item.id===id)).filter((item):item is Dictionary=>Boolean(item)))
+const selectedExtra=computed(()=>props.items.filter(item=>props.modelValue.includes(item.id)&&!props.commonIds.includes(item.id)))
+const results=computed(()=>props.items.filter(item=>`${item.name} ${item.code}`.toLowerCase().includes(search.value.toLowerCase())))
+function choose(id:number){if(props.disabled||props.lockedIds?.includes(id))return;emit('update:modelValue',props.multiple?(props.modelValue.includes(id)?props.modelValue.filter(value=>value!==id):[...props.modelValue,id]):[id])}
+function open(edit:boolean){editing.value=edit;draft.value=[...props.commonIds];search.value='';error.value='';dialog.value=true}
+function toggleCommon(id:number){if(draft.value.includes(id))draft.value=draft.value.filter(value=>value!==id);else if(draft.value.length<10)draft.value.push(id);else error.value='最多10个常用选项，请先移除一个再替换'}
+function move(index:number,offset:number){const next=[...draft.value];const target=index+offset;if(target<0||target>=next.length)return;[next[index],next[target]]=[next[target]!,next[index]!];draft.value=next}
+async function saveCommon(){if(busy.value)return;busy.value=true;error.value='';try{const result=await apiRequest<{ids:number[]}>(`/catalog-preferences/${props.kind}`,{method:'PUT',body:JSON.stringify({ids:draft.value})});emit('update:commonIds',result.ids);dialog.value=false}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
+</script>
+<template><section class="choice-panel"><div class="choice-heading"><h3>常用{{label}}</h3><el-button text :aria-label="`编辑常用${label}`" @click="open(true)">编辑常用</el-button></div>
+<p class="field-help">{{kind==='colors'?'最多10个常用颜色，可多选。':'点选一个尺码组，可维护常用顺序。'}}</p>
+<div class="choice-list" :aria-label="`${label}列表`"><button v-for="item in [...common,...selectedExtra]" :key="item.id" type="button" class="choice-item" :class="{'is-selected':modelValue.includes(item.id)}" :aria-label="item.name" :aria-pressed="modelValue.includes(item.id)" :disabled="disabled||lockedIds?.includes(item.id)" @click="choose(item.id)"><span v-if="kind==='colors'" class="color-swatch" :style="{backgroundColor:item.hex_value||'#cbd5e1'}"/><span>{{item.name}}</span><span v-if="modelValue.includes(item.id)" aria-hidden="true">✓</span><small v-if="lockedIds?.includes(item.id)">已有</small></button></div>
+<p v-if="!common.length" class="field-help">尚未配置常用{{label}}</p><el-button :disabled="disabled" @click="open(false)">更多{{label}}</el-button>
+<el-dialog v-model="dialog" :title="`${editing?'编辑常用':'选择'}${label}`" width="600px" :close-on-click-modal="false" :before-close="(done:()=>void)=>{if(!busy)done()}"><div v-if="error" role="alert" class="inline-error">{{error}}</div><el-input v-model="search" :aria-label="`搜索${label}`" :placeholder="`搜索${label}名称或编码`" clearable/>
+<template v-if="editing"><p class="field-help">已选 {{draft.length}} / 10，取消后可替换；上移、下移调整显示顺序。</p><ol class="common-order"><li v-for="(id,index) in draft" :key="id"><span>{{items.find(item=>item.id===id)?.name||'已停用选项'}}</span><el-button :disabled="busy||index===0" :aria-label="`上移${items.find(item=>item.id===id)?.name}`" @click="move(index,-1)">上移</el-button><el-button :disabled="busy||index===draft.length-1" :aria-label="`下移${items.find(item=>item.id===id)?.name}`" @click="move(index,1)">下移</el-button><el-button :disabled="busy" @click="toggleCommon(id)">移除</el-button></li></ol></template>
+<div class="choice-dialog-list"><button v-for="item in results" :key="item.id" type="button" class="choice-option" :aria-label="`${editing?'常用':''}${item.name}`" :aria-pressed="(editing?draft:modelValue).includes(item.id)" :disabled="busy||(!editing&&(disabled||lockedIds?.includes(item.id)))" @click="editing?toggleCommon(item.id):choose(item.id)"><span v-if="kind==='colors'" class="color-swatch" :style="{backgroundColor:item.hex_value||'#cbd5e1'}"/>{{item.name}}<span v-if="(editing?draft:modelValue).includes(item.id)">✓</span></button><p v-if="!results.length">没有匹配选项，请先在档案管理中建立。</p></div>
+<template #footer><el-button :disabled="busy" @click="dialog=false">{{editing?'取消':'完成选择'}}</el-button><el-button v-if="editing" type="primary" :loading="busy" :aria-label="`保存常用${label}`" @click="saveCommon">保存常用</el-button></template></el-dialog></section></template>

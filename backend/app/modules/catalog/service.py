@@ -3,7 +3,86 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.common.archives import commit_record, find_record, record_data
-from app.modules.catalog.models import SKU, Color, Product, Size, SizeGroup
+from app.modules.catalog.models import SKU, Category, Color, Fabric, Product, Size, SizeGroup
+
+
+async def resolve_product_dictionaries(session, values, existing=None):
+    if "category_id" in values and values["category_id"] is None:
+        raise HTTPException(422, "品类不能为空")
+    category_id = values.get("category_id", existing.category_id if existing else None)
+    fabric_id = values.get("fabric_id", existing.fabric_id if existing else None)
+    if values.get("fabric_composition") and not fabric_id:
+        raise HTTPException(422, "面料成分必须从面料档案选择")
+    category = None
+    if category_id:
+        category = await session.scalar(
+            select(Category)
+            .where(Category.id == category_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if not category or (
+            category.status != "ACTIVE" and (not existing or category_id != existing.category_id)
+        ):
+            raise HTTPException(422, "请选择有效品类")
+        values["category"] = category.name
+    if fabric_id:
+        fabric = await session.scalar(
+            select(Fabric)
+            .where(Fabric.id == fabric_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        if not fabric or (
+            fabric.status != "ACTIVE" and (not existing or fabric_id != existing.fabric_id)
+        ):
+            raise HTTPException(422, "请选择有效面料成分")
+        values["fabric_composition"] = fabric.composition
+    elif "fabric_id" in values:
+        values["fabric_composition"] = None
+    if category and (not existing or "category_id" in values or "fabric_id" in values):
+        category.last_fabric_id = fabric_id
+
+
+async def append_product_colors(session, product, additions):
+    current = (
+        await session.scalars(select(SKU).where(SKU.product_id == product.id).with_for_update())
+    ).all()
+    previous_colors = {sku.color_id for sku in current}
+    size_ids = {sku.size_id for sku in current}
+    color_ids = {cell["color_id"] for cell in additions}
+    if color_ids & previous_colors:
+        raise HTTPException(409, "颜色已存在，请刷新商品后重试")
+    if len(previous_colors | color_ids) > 30:
+        raise HTTPException(422, "一个商品最多选择30种颜色")
+    sizes = (
+        await session.scalars(
+            select(Size).where(Size.id.in_(size_ids)).order_by(Size.id).with_for_update()
+        )
+    ).all()
+    colors = (
+        await session.scalars(
+            select(Color).where(Color.id.in_(color_ids)).order_by(Color.id).with_for_update()
+        )
+    ).all()
+    if len(colors) != len(color_ids) or any(color.status != "ACTIVE" for color in colors):
+        raise HTTPException(422, "请选择有效颜色")
+    expected = {(color_id, size_id) for color_id in color_ids for size_id in size_ids}
+    actual = {(cell["color_id"], cell["size_id"]) for cell in additions}
+    if not expected or expected != actual or len(additions) != len(expected):
+        raise HTTPException(422, "新增颜色必须覆盖商品原有全部尺码且不能重复")
+    color_map = {color.id: color for color in colors}
+    size_map = {size.id: size for size in sizes}
+    for cell in additions:
+        code = f"{product.code}-{color_map[cell['color_id']].code}-{size_map[cell['size_id']].code}"
+        if len(code) > 64:
+            raise HTTPException(422, "生成的规格编码超过64字符")
+        session.add(
+            SKU(
+                product_id=product.id,
+                **{**cell, "code": code, "barcode": cell.get("barcode") or code},
+            )
+        )
 
 
 async def validate_color(session, values, existing):
@@ -132,6 +211,7 @@ async def create_product(session, actor, body):
             raise HTTPException(422, "生成的规格编码超过64字符，请缩短款号或字典编码")
         sku_values.append({**item.model_dump(), "code": code, "barcode": item.barcode or code})
     values = body.model_dump(exclude={"color_ids", "skus"})
+    await resolve_product_dictionaries(session, values)
     product = Product(**values)
     session.add(product)
     try:
@@ -150,10 +230,26 @@ async def create_product(session, actor, body):
 
 
 async def update_product(session, actor, product, body):
+    try:
+        return await _update_product(session, actor, product, body)
+    except IntegrityError:
+        await session.rollback()
+        raise HTTPException(409, "款号、条码或规格重复，请检查后重试") from None
+
+
+async def _update_product(session, actor, product, body):
+    await session.execute(
+        select(SizeGroup).where(SizeGroup.id == product.size_group_id).with_for_update()
+    )
+    await session.refresh(product, with_for_update=True)
     values = body.model_dump(exclude_unset=True)
     if "code" in values and values["code"] != product.code:
         raise HTTPException(409, "商品款号已经生成规格，不能修改")
     sku_prices = values.pop("sku_prices", None)
+    additions = values.pop("new_skus", None)
+    if additions:
+        await append_product_colors(session, product, additions)
+    await resolve_product_dictionaries(session, values, product)
     for key, value in values.items():
         if value is None and not Product.__table__.columns[key].nullable:
             raise HTTPException(422, "必填字段不能为空")
@@ -166,5 +262,11 @@ async def update_product(session, actor, product, body):
             if sku.product_id != product.id:
                 raise HTTPException(422, "规格不属于当前商品")
             sku.retail_price = item["retail_price"]
-    await commit_record(session, product, actor, {**values, "sku_prices": sku_prices}, "UPDATE")
+    await commit_record(
+        session,
+        product,
+        actor,
+        {**values, "sku_prices": sku_prices, "new_skus": additions},
+        "UPDATE",
+    )
     return await product_data(session, product)

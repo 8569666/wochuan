@@ -1,6 +1,15 @@
 from decimal import Decimal
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import (
+    JSON,
+    BigInteger,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models import TABLE_OPTIONS, Archive, Base, Record
@@ -25,10 +34,31 @@ class Size(Archive, Base):
     position: Mapped[int] = mapped_column(Integer, default=0)
 
 
+class Fabric(Archive, Base):
+    __tablename__ = "werp_fabrics"
+    __table_args__ = TABLE_OPTIONS
+    composition: Mapped[str] = mapped_column(Text)
+
+
+class Category(Archive, Base):
+    __tablename__ = "werp_categories"
+    __table_args__ = TABLE_OPTIONS
+    last_fabric_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("werp_fabrics.id"))
+
+
+class CatalogPreference(Record, Base):
+    __tablename__ = "werp_catalog_preferences"
+    __table_args__ = TABLE_OPTIONS
+    kind: Mapped[str] = mapped_column(String(32), unique=True)
+    ids: Mapped[list] = mapped_column(JSON)
+
+
 class Product(Archive, Base):
     __tablename__ = "werp_products"
     __table_args__ = TABLE_OPTIONS
     category: Mapped[str] = mapped_column(String(64))
+    category_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("werp_categories.id"))
+    fabric_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("werp_fabrics.id"))
     year: Mapped[int] = mapped_column(Integer)
     season: Mapped[str] = mapped_column(String(16))
     wave_band: Mapped[str | None] = mapped_column(String(32))

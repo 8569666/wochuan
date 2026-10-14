@@ -76,6 +76,8 @@ async def authenticated_client(client, db_session):
 @pytest.fixture
 async def matrix(authenticated_client):
     client = authenticated_client
+    category = await client.post("/api/v1/categories", json={"code": "DRESS", "name": "连衣裙"})
+    assert category.status_code == 201
     colors = []
     for i, name in enumerate(["米白", "樱花粉", "曜石黑"], 1):
         response = await client.post("/api/v1/colors", json={"code": f"C{i}", "name": name})
@@ -95,6 +97,7 @@ async def matrix(authenticated_client):
         "code": "2026S-DR088",
         "name": "法式收腰连衣裙",
         "category": "连衣裙",
+        "category_id": category.json()["data"]["id"],
         "year": 2026,
         "season": "春夏",
         "tag_price": "599.00",

@@ -1,15 +1,30 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import func, or_, select
+from sqlalchemy.dialects.mysql import insert
 
 from app.common.archives import archive_router, find_record, list_records, record_data
 from app.common.responses import payload
+from app.common.schemas import partial_schema
+from app.models import utcnow
+from app.modules.audit.service import record_audit
 from app.modules.auth.service import AdminDep, SessionDep
-from app.modules.catalog.models import SKU, Color, Product, SizeGroup
+from app.modules.catalog.models import (
+    SKU,
+    CatalogPreference,
+    Category,
+    Color,
+    Fabric,
+    Product,
+    SizeGroup,
+)
 from app.modules.catalog.schemas import (
+    CategoryCreate,
     ColorCreate,
     ColorUpdate,
+    FabricCreate,
+    PreferenceUpdate,
     ProductCreate,
     ProductUpdate,
     SizeGroupCreate,
@@ -28,6 +43,72 @@ from app.modules.suppliers.models import Supplier
 
 router = APIRouter(tags=["商品"])
 router.include_router(archive_router("/colors", Color, ColorCreate, ColorUpdate, validate_color))
+router.include_router(
+    archive_router("/categories", Category, CategoryCreate, partial_schema(CategoryCreate))
+)
+router.include_router(
+    archive_router("/fabrics", Fabric, FabricCreate, partial_schema(FabricCreate))
+)
+
+
+def preference_model(kind):
+    if kind not in {"colors", "size-groups"}:
+        raise HTTPException(404, "常用选项类型不存在")
+    return Color if kind == "colors" else SizeGroup
+
+
+@router.get("/catalog-preferences/{kind}")
+async def preference_detail(kind: str, session: SessionDep, user: AdminDep):
+    model = preference_model(kind)
+    preference = await session.scalar(
+        select(CatalogPreference).where(CatalogPreference.kind == kind)
+    )
+    active = list(
+        (
+            await session.scalars(
+                select(model.id).where(model.status == "ACTIVE").order_by(model.id)
+            )
+        ).all()
+    )
+    return payload(
+        {
+            "ids": [identifier for identifier in preference.ids if identifier in active]
+            if preference
+            else active[:10]
+        }
+    )
+
+
+@router.put("/catalog-preferences/{kind}")
+async def preference_update(kind: str, body: PreferenceUpdate, session: SessionDep, user: AdminDep):
+    model = preference_model(kind)
+    active = (
+        await session.scalars(
+            select(model.id)
+            .where(model.id.in_(body.ids), model.status == "ACTIVE")
+            .order_by(model.id)
+            .with_for_update()
+        )
+    ).all()
+    if set(active) != set(body.ids):
+        raise HTTPException(422, "常用列表只能包含有效选项")
+    statement = insert(CatalogPreference).values(
+        kind=kind, ids=body.ids, created_at=utcnow(), updated_at=utcnow()
+    )
+    await session.execute(statement.on_duplicate_key_update(ids=body.ids, updated_at=utcnow()))
+    preference = await session.scalar(
+        select(CatalogPreference).where(CatalogPreference.kind == kind).with_for_update()
+    )
+    record_audit(
+        session,
+        user.id,
+        "UPDATE",
+        CatalogPreference.__tablename__,
+        preference.id,
+        {"kind": kind, "ids": body.ids},
+    )
+    await session.commit()
+    return payload({"ids": body.ids})
 
 
 @router.get("/size-groups")
