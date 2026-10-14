@@ -5,9 +5,10 @@
 
 ### 文档基本信息
 - **项目名称**：新零售多门店女装连锁数字化进销存系统（W-ERP & POS）
-- **技术栈架构**：Vue 3 (Vite + TypeScript + Pinia + Element Plus) + FastAPI (Python 3.12 + Async SQLAlchemy + Pydantic v2 + PostgreSQL + Redis)
-- **文档版本**：v1.0.0
+- **技术栈架构**：Vue 3 (Vite + TypeScript + Pinia + Element Plus) + FastAPI (Python 3.14 + Async SQLAlchemy + Pydantic v2 + MySQL 8.0 + Redis)
+- **文档版本**：v1.0.1
 - **编制日期**：2026-10-14
+- **技术选型更新**：2026-10-15，用户指定 Python 3.14 与本地 MySQL；首批以 MySQL 8.0.46 为兼容目标，详细范围见 `docs/superpowers/specs/2026-10-15-foundation-design.md`。
 - **面向读者**：产品经理、前端开发工程师、后端开发工程师、测试工程师、零售业务运营团队、系统运维人员
 
 ---
@@ -258,10 +259,10 @@ $$C_{new} = rac{(Q_{before} 	imes C_{old}) + (Q_{in} 	imes C_{in})}{Q_{before} 
                             │             │              │
     ┌───────────────────────▼┐   ┌────────▼─────────┐   ┌▼──────────────┐
     │     关系型数据库        │   │    缓存与锁服务  │   │ 异步后台任务  │
-    │  PostgreSQL 15+        │   │  Redis 7.0+      │   │ • 报表批量导出│
+    │  MySQL 8.0 (InnoDB)        │   │  Redis 7.0+      │   │ • 报表批量导出│
     │  • 事务一致性 ACID     │   │  • 分布式库存锁  │   │ • 夜间补货跑批│
     │  • 行级排他锁 (FOR UPDATE)│  • 会员Token/会话│   │ • 消息推送    │
-    │  • JSONB 扩展规格      │   │  • 流水号生成器  │   └───────────────┘
+    │  • JSON 扩展规格      │   │  • 流水号生成器  │   └───────────────┘
     └────────────────────────┘   └──────────────────┘
 ```
 
@@ -316,9 +317,12 @@ $$C_{new} = rac{(Q_{before} 	imes C_{old}) + (Q_{in} 	imes C_{in})}{Q_{before} 
 ## 6. 核心数据库物理表结构设计 (DDL)
 
 ```sql
+-- MySQL 8.0示例；应用和数据库连接统一使用UTC。正式表结构以Alembic迁移为准。
+SET time_zone = '+00:00';
+
 -- 1. 商品 SPU 表
 CREATE TABLE spu_products (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     spu_code VARCHAR(64) UNIQUE NOT NULL,      -- 款号, 如 2026S-DR088
     spu_name VARCHAR(255) NOT NULL,            -- 款名
     category_id INT NOT NULL,                  -- 品类ID
@@ -332,14 +336,14 @@ CREATE TABLE spu_products (
     purchase_base_price DECIMAL(10, 2),        -- 采购基准价
     min_retail_price DECIMAL(10, 2),           -- 最低零售限价
     status VARCHAR(32) DEFAULT 'ACTIVE',       -- 状态: ACTIVE/DISCONTINUED
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+    updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 2. 商品 SKU 表
 CREATE TABLE sku_items (
-    id BIGSERIAL PRIMARY KEY,
-    spu_id BIGINT REFERENCES spu_products(id) ON DELETE CASCADE,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    spu_id BIGINT,
     sku_code VARCHAR(64) UNIQUE NOT NULL,      -- SKU编码: 2026S-DR088-01-S
     barcode VARCHAR(64) UNIQUE NOT NULL,       -- 国际条形码
     color_code VARCHAR(32) NOT NULL,           -- 色号: 01
@@ -349,12 +353,13 @@ CREATE TABLE sku_items (
     cost_price DECIMAL(10, 2) NOT NULL,        -- 当前移动加权成本价
     retail_price DECIMAL(10, 2) NOT NULL,      -- 门店零售价
     franchise_price DECIMAL(10, 2),            -- 加盟商批发价
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_sku_items_spu_id FOREIGN KEY (spu_id) REFERENCES spu_products(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 3. 组织门店与仓库表
 CREATE TABLE stores (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     store_code VARCHAR(32) UNIQUE NOT NULL,
     store_name VARCHAR(128) NOT NULL,
     store_type VARCHAR(32) NOT NULL,           -- DIRECT(直营), FRANCHISE(加盟), CONSIGNMENT(商场联营)
@@ -364,37 +369,40 @@ CREATE TABLE stores (
     credit_limit DECIMAL(12, 2) DEFAULT 0.00,  -- 加盟商授信额度
     balance DECIMAL(12, 2) DEFAULT 0.00,       -- 账户预付余额
     status VARCHAR(16) DEFAULT 'OPEN'
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 CREATE TABLE warehouses (
-    id SERIAL PRIMARY KEY,
+    id INT AUTO_INCREMENT PRIMARY KEY,
     wh_code VARCHAR(32) UNIQUE NOT NULL,
     wh_name VARCHAR(128) NOT NULL,
     wh_type VARCHAR(32) NOT NULL,              -- CENTRAL(总仓), STORE(店仓), TRANSIT(在途), DEFECT(残次)
-    store_id INT REFERENCES stores(id),        -- 关联门店 (店仓专用)
-    status VARCHAR(16) DEFAULT 'ACTIVE'
-);
+    store_id INT,        -- 关联门店 (店仓专用)
+    status VARCHAR(16) DEFAULT 'ACTIVE',
+    CONSTRAINT fk_warehouses_store_id FOREIGN KEY (store_id) REFERENCES stores(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 4. 实时库存主表 (仓+SKU维度)
 CREATE TABLE inventory_stocks (
-    id BIGSERIAL PRIMARY KEY,
-    warehouse_id INT REFERENCES warehouses(id),
-    sku_id BIGINT REFERENCES sku_items(id),
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    warehouse_id INT,
+    sku_id BIGINT,
     physical_stock INT NOT NULL DEFAULT 0,     -- 物理在库总数
     locked_stock INT NOT NULL DEFAULT 0,       -- 锁定库存
     transit_stock INT NOT NULL DEFAULT 0,      -- 在途库存
     safe_stock INT DEFAULT 2,                  -- 安全警戒库存
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
     CONSTRAINT uk_wh_sku UNIQUE(warehouse_id, sku_id),
-    CONSTRAINT chk_stock_non_negative CHECK (physical_stock >= 0)
-);
+    CONSTRAINT chk_stock_non_negative CHECK (physical_stock >= 0),
+    CONSTRAINT fk_inventory_stocks_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
+    CONSTRAINT fk_inventory_stocks_sku_id FOREIGN KEY (sku_id) REFERENCES sku_items(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 5. 库存变动流水台账表
 CREATE TABLE inventory_transactions (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     trans_no VARCHAR(64) UNIQUE NOT NULL,
-    warehouse_id INT REFERENCES warehouses(id),
-    sku_id BIGINT REFERENCES sku_items(id),
+    warehouse_id INT,
+    sku_id BIGINT,
     change_type VARCHAR(32) NOT NULL,          -- IN_PURCHASE, OUT_SALE, IN_TRANSFER, OUT_TRANSFER, PANDIAN
     change_qty INT NOT NULL,                   -- 变动数量 (+/-)
     before_qty INT NOT NULL,
@@ -402,14 +410,16 @@ CREATE TABLE inventory_transactions (
     unit_cost DECIMAL(10, 2),                  -- 出入库当时成本
     ref_bill_no VARCHAR(64) NOT NULL,          -- 关联业务单据号
     operator_id INT NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_inventory_transactions_warehouse_id FOREIGN KEY (warehouse_id) REFERENCES warehouses(id),
+    CONSTRAINT fk_inventory_transactions_sku_id FOREIGN KEY (sku_id) REFERENCES sku_items(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 6. 门店销售订单表 (POS)
 CREATE TABLE sales_orders (
-    id BIGSERIAL PRIMARY KEY,
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
     order_no VARCHAR(64) UNIQUE NOT NULL,      -- 销售单号: SO-20261014-0012
-    store_id INT REFERENCES stores(id),
+    store_id INT,
     cashier_id INT NOT NULL,                   -- 收银员ID
     guide_id INT,                              -- 提成导购员ID
     member_id BIGINT,                          -- 会员ID (可为空)
@@ -419,20 +429,23 @@ CREATE TABLE sales_orders (
     pay_method VARCHAR(32) NOT NULL,           -- WECHAT, ALIPAY, CASH, MIXED
     pay_status VARCHAR(16) DEFAULT 'PAID',     -- PAID, REFUNDED, PART_REFUND
     is_offline_sync BOOLEAN DEFAULT FALSE,     -- 是否为离线重放单据
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
+    created_at DATETIME(6) DEFAULT CURRENT_TIMESTAMP(6),
+    CONSTRAINT fk_sales_orders_store_id FOREIGN KEY (store_id) REFERENCES stores(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- 7. 销售订单明细表
 CREATE TABLE sales_order_items (
-    id BIGSERIAL PRIMARY KEY,
-    order_id BIGINT REFERENCES sales_orders(id) ON DELETE CASCADE,
-    sku_id BIGINT REFERENCES sku_items(id),
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    order_id BIGINT,
+    sku_id BIGINT,
     quantity INT NOT NULL DEFAULT 1,
     tag_price DECIMAL(10, 2) NOT NULL,
     sold_price DECIMAL(10, 2) NOT NULL,
     cost_price DECIMAL(10, 2) NOT NULL,        -- 销售结转成本
-    commission_rate DECIMAL(5, 4) DEFAULT 0    -- 导购提成比率
-);
+    commission_rate DECIMAL(5, 4) DEFAULT 0,   -- 导购提成比率
+    CONSTRAINT fk_sales_order_items_order_id FOREIGN KEY (order_id) REFERENCES sales_orders(id) ON DELETE CASCADE,
+    CONSTRAINT fk_sales_order_items_sku_id FOREIGN KEY (sku_id) REFERENCES sku_items(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 ```
 
 ---
@@ -501,14 +514,14 @@ class POSCheckoutRequest(BaseModel):
 1. **网络容灾方案**：
    - POS终端离线收银模式：本地使用 IndexedDB 缓存 1000 笔离线交易流水，重连后指数退避重试同步。
 2. **数据冷热备份**：
-   - PostgreSQL 每日全量逻辑备份，保留近 90 天；WAL 日志归档开启，保证恢复点目标 (RPO) $\le 5$ 分钟。
+   - MySQL 每日全量逻辑备份，保留近 90 天；持续归档 binlog 并定期演练按时间点恢复，目标恢复点 (RPO) $\le 5$ 分钟。
 3. **敏感信息脱敏**：
    - 会员手机号、身份证号、员工薪资在前端与非高权API展示时强制执行脱敏：`138****1234`。
 
 ### 8.3 推荐生产部署方案 (Docker Compose)
 - **前端部署**：Nginx 容器托管 Vue 3 静态编译资源（开启 gzip / brotli 压缩，反向代理 `/api/`）。
 - **后端服务**：FastAPI 容器运行在 Gunicorn + UvicornWorker 模式下（推荐 Worker 数为 `CPU核心数 * 2 + 1`）。
-- **数据库与缓存**：PostgreSQL 15 容器挂载高性能 SSD 存储卷；Redis 7 开启 AOF + RDB 双模持久化。
+- **数据库与缓存**：MySQL 8.0（InnoDB）挂载高性能 SSD 存储卷；本地开发可连接已有 MySQL 实例；Redis 7 开启 AOF + RDB 双模持久化。
 - **异步任务处理**：Celery Worker 容器独立调度耗时较长的数据跑批与报表导出。
 
 ---
