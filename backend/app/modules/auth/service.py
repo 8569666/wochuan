@@ -18,15 +18,29 @@ DUMMY_PASSWORD = hash_password(secrets.token_urlsafe(32))
 
 
 def user_data(user: User):
-    return {"id": user.id, "username": user.username,
-            "display_name": user.display_name, "role": user.role}
+    return {
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "role": user.role,
+    }
 
 
 async def require_admin(request: Request, session: SessionDep) -> User:
     token = request.cookies.get("werp_session", "")
-    user = await session.scalar(select(User).join(LoginSession).where(
-        LoginSession.token_hash == token_hash(token), LoginSession.expires_at > utcnow(),
-        User.status == "ACTIVE")) if token else None
+    user = (
+        await session.scalar(
+            select(User)
+            .join(LoginSession)
+            .where(
+                LoginSession.token_hash == token_hash(token),
+                LoginSession.expires_at > utcnow(),
+                User.status == "ACTIVE",
+            )
+        )
+        if token
+        else None
+    )
     if user is None:
         raise HTTPException(401, "请先登录")
     if user.role != "ADMIN":
@@ -58,8 +72,11 @@ async def authenticate(session: AsyncSession, username: str, password: str, ip: 
         raise HTTPException(401, "用户名或密码不正确")
     limit.failures = 0
     token = secrets.token_urlsafe(32)
-    session.add(LoginSession(user_id=user.id, token_hash=token_hash(token),
-                             expires_at=now + timedelta(hours=8)))
+    session.add(
+        LoginSession(
+            user_id=user.id, token_hash=token_hash(token), expires_at=now + timedelta(hours=8)
+        )
+    )
     record_audit(session, user.id, "LOGIN", "user", user.id, {})
     await session.commit()
     return user, token

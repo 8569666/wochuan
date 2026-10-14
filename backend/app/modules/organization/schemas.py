@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from app.common.schemas import ArchiveCreate, partial_schema
 

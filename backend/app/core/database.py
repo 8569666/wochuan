@@ -7,9 +7,11 @@ from app.core.config import Settings
 
 
 def make_database(settings: Settings):
-    engine = create_async_engine(settings.database_url, pool_pre_ping=True,
-                                 connect_args={"connect_timeout": 3,
-                                               "init_command": "SET time_zone = '+00:00'"})
+    engine = create_async_engine(
+        settings.database_url,
+        pool_pre_ping=True,
+        connect_args={"connect_timeout": 3, "init_command": "SET time_zone = '+00:00'"},
+    )
     return engine, async_sessionmaker(engine, expire_on_commit=False)
 
 

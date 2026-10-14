@@ -43,27 +43,46 @@ async def commit_record(session, record, user, changes, action):
 async def list_records(session, model, keyword, status, page, page_size, extra_filter=None):
     filters = []
     if keyword:
-        filters.append(or_(model.code.contains(keyword, autoescape=True),
-                           model.name.contains(keyword, autoescape=True)))
+        filters.append(
+            or_(
+                model.code.contains(keyword, autoescape=True),
+                model.name.contains(keyword, autoescape=True),
+            )
+        )
     if status:
         filters.append(model.status == status)
     if extra_filter is not None:
         filters.append(extra_filter)
     total = await session.scalar(select(func.count()).select_from(model).where(*filters))
-    records = (await session.scalars(select(model).where(*filters).order_by(model.id.desc())
-                                     .offset((page - 1) * page_size).limit(page_size))).all()
-    return {"items": [record_data(record) for record in records], "total": total,
-            "page": page, "page_size": page_size}
+    records = (
+        await session.scalars(
+            select(model)
+            .where(*filters)
+            .order_by(model.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+    return {
+        "items": [record_data(record) for record in records],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 def archive_router(path, model, create_schema, update_schema, validator=None):
     router = APIRouter(prefix=path, tags=[path.strip("/")])
 
     @router.get("")
-    async def listing(session: SessionDep, user: AdminDep, keyword: str = "",
-                      status: Literal["ACTIVE", "INACTIVE"] | None = None,
-                      page: Annotated[int, Query(ge=1)] = 1,
-                      page_size: Annotated[int, Query(ge=1, le=100)] = 20):
+    async def listing(
+        session: SessionDep,
+        user: AdminDep,
+        keyword: str = "",
+        status: Literal["ACTIVE", "INACTIVE"] | None = None,
+        page: Annotated[int, Query(ge=1)] = 1,
+        page_size: Annotated[int, Query(ge=1, le=100)] = 20,
+    ):
         return payload(await list_records(session, model, keyword, status, page, page_size))
 
     @router.get("/{record_id}")

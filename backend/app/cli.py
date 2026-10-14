@@ -2,7 +2,6 @@ import argparse
 import getpass
 import re
 import secrets
-from pathlib import Path
 
 from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
@@ -31,7 +30,11 @@ def main():
         engine.dispose()
         return
     with Session(engine) as session:
-        username = "admin" if args.command == "bootstrap-local" else input("管理员用户名: ").strip().lower()
+        username = (
+            "admin"
+            if args.command == "bootstrap-local"
+            else input("管理员用户名: ").strip().lower()
+        )
         if not re.fullmatch(r"[a-z0-9_.-]{3,64}", username):
             raise SystemExit("用户名需为3-64位字母、数字或_.-")
         if session.scalar(select(User).where(User.username == username)):

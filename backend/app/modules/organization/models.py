@@ -17,5 +17,6 @@ class Warehouse(Archive, Base):
     __tablename__ = "werp_warehouses"
     __table_args__ = TABLE_OPTIONS
     type: Mapped[str] = mapped_column(String(16), default="CENTRAL")
-    store_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("werp_stores.id"),
-                                               unique=True)
+    store_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("werp_stores.id"), unique=True
+    )

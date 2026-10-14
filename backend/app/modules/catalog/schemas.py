@@ -1,6 +1,6 @@
 import re
 from decimal import Decimal
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

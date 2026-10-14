@@ -13,10 +13,18 @@ router = APIRouter(prefix="/auth", tags=["登录"])
 
 @router.post("/login")
 async def login(body: LoginRequest, request: Request, response: Response, session: SessionDep):
-    user, token = await authenticate(session, body.username, body.password,
-                                      request.client.host if request.client else "local")
-    response.set_cookie("werp_session", token, httponly=True, samesite="strict", max_age=28800,
-                        secure=request.app.state.settings.cookie_secure, path="/")
+    user, token = await authenticate(
+        session, body.username, body.password, request.client.host if request.client else "local"
+    )
+    response.set_cookie(
+        "werp_session",
+        token,
+        httponly=True,
+        samesite="strict",
+        max_age=28800,
+        secure=request.app.state.settings.cookie_secure,
+        path="/",
+    )
     return payload(user_data(user))
 
 
@@ -27,8 +35,11 @@ async def me(user: AdminDep):
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, session: SessionDep, user: AdminDep):
-    await session.execute(delete(LoginSession).where(
-        LoginSession.token_hash == token_hash(request.cookies.get("werp_session", ""))))
+    await session.execute(
+        delete(LoginSession).where(
+            LoginSession.token_hash == token_hash(request.cookies.get("werp_session", ""))
+        )
+    )
     record_audit(session, user.id, "LOGOUT", "user", user.id, {})
     await session.commit()
     response.delete_cookie("werp_session", path="/", httponly=True, samesite="strict")

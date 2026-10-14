@@ -12,10 +12,11 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, encoded: str) -> bool:
     try:
         _, salt, expected = encoded.split("$")
-        actual = hashlib.scrypt(password.encode(), salt=bytes.fromhex(salt),
-                                n=16384, r=8, p=1, dklen=64)
+        actual = hashlib.scrypt(
+            password.encode(), salt=bytes.fromhex(salt), n=16384, r=8, p=1, dklen=64
+        )
         return hmac.compare_digest(actual.hex(), expected)
-    except (ValueError, TypeError):
+    except ValueError, TypeError:
         return False
 
 

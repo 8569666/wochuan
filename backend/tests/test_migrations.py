@@ -1,10 +1,9 @@
 import pytest
+from conftest import assert_test_database
 from sqlalchemy import inspect
 
 from app.core.config import Settings
-from app.core.migrations import upgrade_database
 from app.models import Base
-from conftest import assert_test_database
 
 
 def test_refuse_development_database_cleanup():

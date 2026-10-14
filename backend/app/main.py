@@ -28,12 +28,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.engine = engine
     app.state.session_factory = session_factory
     from app.modules.auth.router import router as auth_router
+
     app.include_router(auth_router, prefix="/api/v1")
     from app.modules.organization.router import router as org_router
     from app.modules.suppliers.router import router as supplier_router
+
     app.include_router(org_router, prefix="/api/v1")
     app.include_router(supplier_router, prefix="/api/v1")
     from app.modules.catalog.router import router as catalog_router
+
     app.include_router(catalog_router, prefix="/api/v1")
 
     @app.middleware("http")
@@ -52,8 +55,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(request, exc):
-        errors = [{"field": ".".join(str(item) for item in err["loc"]),
-                   "message": err["msg"]} for err in exc.errors()]
+        errors = [
+            {"field": ".".join(str(item) for item in err["loc"]), "message": err["msg"]}
+            for err in exc.errors()
+        ]
         return error_response(422, "请检查填写内容", request.state.request_id, errors)
 
     @app.exception_handler(SQLAlchemyError)
@@ -71,7 +76,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 async with engine.connect() as connection:
                     await connection.execute(text("SELECT 1"))
             return payload({"status": "ready"})
-        except (SQLAlchemyError, TimeoutError, OSError):
+        except SQLAlchemyError, TimeoutError, OSError:
             raise HTTPException(503, "数据库暂时不可用，请稍后重试") from None
 
     return app

@@ -26,7 +26,9 @@ async def admin(db_session):
 
 
 async def login(client):
-    return await client.post("/api/v1/auth/login", json={"username": "tester", "password": "Test!Password#123"})
+    return await client.post(
+        "/api/v1/auth/login", json={"username": "tester", "password": "Test!Password#123"}
+    )
 
 
 async def test_login_logout_and_expiry(client, admin, db_session):
@@ -36,8 +38,11 @@ async def test_login_logout_and_expiry(client, admin, db_session):
     assert "samesite=strict" in response.headers["set-cookie"].lower()
     assert (await client.get("/api/v1/auth/me")).status_code == 200
     token = client.cookies.get("werp_session")
-    record = await db_session.scalar(select(LoginSession).where(
-        LoginSession.token_hash == hashlib.sha256(token.encode()).hexdigest()))
+    record = await db_session.scalar(
+        select(LoginSession).where(
+            LoginSession.token_hash == hashlib.sha256(token.encode()).hexdigest()
+        )
+    )
     record.expires_at = utcnow() - timedelta(seconds=1)
     await db_session.commit()
     assert (await client.get("/api/v1/auth/me")).status_code == 401
@@ -55,12 +60,16 @@ async def test_disabled_user_and_missing_cookie_rejected(client, admin, db_sessi
 
 
 async def test_wrong_origin_rejected(client):
-    response = await client.post("/api/v1/auth/login", headers={"origin": "https://evil.example"}, json={})
+    response = await client.post(
+        "/api/v1/auth/login", headers={"origin": "https://evil.example"}, json={}
+    )
     assert response.status_code == 403
 
 
 async def test_failed_login_rate_limit(client, admin):
     for _ in range(5):
-        response = await client.post("/api/v1/auth/login", json={"username": "tester", "password": "bad"})
+        response = await client.post(
+            "/api/v1/auth/login", json={"username": "tester", "password": "bad"}
+        )
         assert response.status_code == 401
     assert (await login(client)).status_code == 429

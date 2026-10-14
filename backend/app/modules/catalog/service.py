@@ -15,8 +15,11 @@ async def validate_color(session, values, existing):
 
 async def group_data(session, group):
     result = record_data(group)
-    sizes = (await session.scalars(select(Size).where(Size.group_id == group.id)
-                                   .order_by(Size.position, Size.id))).all()
+    sizes = (
+        await session.scalars(
+            select(Size).where(Size.group_id == group.id).order_by(Size.position, Size.id)
+        )
+    ).all()
     result["sizes"] = [record_data(size) for size in sizes]
     return result
 
@@ -25,9 +28,12 @@ async def save_group(session, user, body, existing=None):
     values = body.model_dump(exclude_unset=bool(existing))
     sizes = values.pop("sizes", None)
     if existing:
-        await session.execute(select(SizeGroup).where(SizeGroup.id == existing.id).with_for_update())
-        referenced = await session.scalar(select(Product.id).where(
-            Product.size_group_id == existing.id).limit(1))
+        await session.execute(
+            select(SizeGroup).where(SizeGroup.id == existing.id).with_for_update()
+        )
+        referenced = await session.scalar(
+            select(Product.id).where(Product.size_group_id == existing.id).limit(1)
+        )
         if referenced and (sizes is not None or values.get("code", existing.code) != existing.code):
             raise HTTPException(409, "尺码组已被商品引用，编码和尺码项不能修改")
         group = existing
@@ -44,10 +50,18 @@ async def save_group(session, user, body, existing=None):
         await session.flush()
         if sizes is not None:
             for position, size in enumerate(sizes):
-                session.add(Size(group_id=group.id, position=position,
-                                 code=size["code"], name=size["name"], status=size["status"]))
-        await commit_record(session, group, user, {**values, "sizes": sizes},
-                             "UPDATE" if existing else "CREATE")
+                session.add(
+                    Size(
+                        group_id=group.id,
+                        position=position,
+                        code=size["code"],
+                        name=size["name"],
+                        status=size.get("status", "ACTIVE"),
+                    )
+                )
+        await commit_record(
+            session, group, user, {**values, "sizes": sizes}, "UPDATE" if existing else "CREATE"
+        )
     except IntegrityError:
         await session.rollback()
         raise HTTPException(409, "编码或关联关系重复，请检查后重试") from None
@@ -59,25 +73,43 @@ async def save_group(session, user, body, existing=None):
 
 async def product_data(session, product):
     result = record_data(product)
-    rows = (await session.execute(select(SKU, Color, Size).join(Color, SKU.color_id == Color.id)
-        .join(Size, SKU.size_id == Size.id).where(SKU.product_id == product.id)
-        .order_by(Color.id, Size.position, SKU.id))).all()
-    result["skus"] = [{**record_data(sku), "color": record_data(color), "size": record_data(size)}
-                      for sku, color, size in rows]
+    rows = (
+        await session.execute(
+            select(SKU, Color, Size)
+            .join(Color, SKU.color_id == Color.id)
+            .join(Size, SKU.size_id == Size.id)
+            .where(SKU.product_id == product.id)
+            .order_by(Color.id, Size.position, SKU.id)
+        )
+    ).all()
+    result["skus"] = [
+        {**record_data(sku), "color": record_data(color), "size": record_data(size)}
+        for sku, color, size in rows
+    ]
     return result
 
 
 async def create_product(session, actor, body):
-    group = await session.scalar(select(SizeGroup).where(SizeGroup.id == body.size_group_id)
-                                  .with_for_update())
+    group = await session.scalar(
+        select(SizeGroup).where(SizeGroup.id == body.size_group_id).with_for_update()
+    )
     if not group or group.status != "ACTIVE":
         raise HTTPException(422, "请选择有效尺码组")
-    sizes = (await session.scalars(select(Size).where(Size.group_id == group.id,
-                                                      Size.status == "ACTIVE"))).all()
-    colors = (await session.scalars(select(Color).where(Color.id.in_(body.color_ids))
-                                    .order_by(Color.id).with_for_update())).all()
-    if len(set(body.color_ids)) != len(body.color_ids) or len(colors) != len(body.color_ids) or any(
-        color.status != "ACTIVE" for color in colors):
+    sizes = (
+        await session.scalars(
+            select(Size).where(Size.group_id == group.id, Size.status == "ACTIVE")
+        )
+    ).all()
+    colors = (
+        await session.scalars(
+            select(Color).where(Color.id.in_(body.color_ids)).order_by(Color.id).with_for_update()
+        )
+    ).all()
+    if (
+        len(set(body.color_ids)) != len(body.color_ids)
+        or len(colors) != len(body.color_ids)
+        or any(color.status != "ACTIVE" for color in colors)
+    ):
         raise HTTPException(422, "颜色重复或已停用，请重新选择")
     expected = {(color.id, size.id) for color in colors for size in sizes}
     actual = {(sku.color_id, sku.size_id) for sku in body.skus}
@@ -97,7 +129,9 @@ async def create_product(session, actor, body):
     try:
         await session.flush()
         session.add_all([SKU(product_id=product.id, **item) for item in sku_values])
-        await commit_record(session, product, actor, {"code": product.code, "sku_count": len(sku_values)}, "CREATE")
+        await commit_record(
+            session, product, actor, {"code": product.code, "sku_count": len(sku_values)}, "CREATE"
+        )
     except IntegrityError:
         await session.rollback()
         raise HTTPException(409, "款号或条码重复，请检查后重试") from None

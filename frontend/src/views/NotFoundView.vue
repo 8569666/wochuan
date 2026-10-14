@@ -1,0 +1,1 @@
+<template><el-result icon="warning" title="页面不存在" sub-title="请检查地址，或返回工作台继续操作。"><template #extra><router-link to="/"><el-button type="primary">返回工作台</el-button></router-link></template></el-result></template>

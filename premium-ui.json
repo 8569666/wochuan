@@ -1,0 +1,9 @@
+{
+  "profile": "product-admin", "sourceRoots": ["frontend/src"], "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "requiredCapabilities": ["Select/Listbox", "Form", "Scrollbar", "Toast", "CRUD"],
+  "ownership": {"Select/Listbox": "authored"},
+  "requiredCommands": ["unit", "typecheck", "build", "design"],
+  "commands": {"unit": "npm --prefix frontend run test -- --run", "typecheck": "npm --prefix frontend run typecheck", "build": "npm --prefix frontend run build", "design": "npm --prefix frontend run check:design"},
+  "evidence": {"crudFullFlow": "backend/tests/test_catalog.py", "failurePaths": "frontend/src/tests/archives.spec.ts"}
+}

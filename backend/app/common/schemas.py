@@ -14,7 +14,7 @@ class ArchiveCreate(BaseModel):
     @field_validator("code", mode="before")
     @classmethod
     def normalize_code(cls, value):
-        if value is None:
+        if not isinstance(value, str):
             return value
         value = value.strip().upper()
         if not re.fullmatch(r"[A-Z0-9_-]+", value):
@@ -24,7 +24,7 @@ class ArchiveCreate(BaseModel):
     @field_validator("name", mode="before")
     @classmethod
     def normalize_name(cls, value):
-        if value is None:
+        if not isinstance(value, str):
             return value
         value = value.strip()
         if not value:
