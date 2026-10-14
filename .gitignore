@@ -22,6 +22,7 @@ build/
 coverage/
 .vite/
 .cache/
+.superpowers/
 .turbo/
 *.tsbuildinfo
 
