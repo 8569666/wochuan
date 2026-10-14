@@ -52,3 +52,15 @@ async def client(test_settings, db_session):
                                 base_url="http://test", headers={"Origin": "http://test"}) as value:
         yield value
     await app.state.engine.dispose()
+
+
+@pytest.fixture
+async def authenticated_client(client, db_session):
+    from app.modules.auth.models import User
+    from app.modules.auth.security import hash_password
+
+    db_session.add(User(username="tester", password_hash=hash_password("Test!Password#123")))
+    await db_session.commit()
+    response = await client.post("/api/v1/auth/login", json={"username": "tester", "password": "Test!Password#123"})
+    assert response.status_code == 200
+    return client

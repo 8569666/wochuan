@@ -29,6 +29,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.session_factory = session_factory
     from app.modules.auth.router import router as auth_router
     app.include_router(auth_router, prefix="/api/v1")
+    from app.modules.organization.router import router as org_router
+    from app.modules.suppliers.router import router as supplier_router
+    app.include_router(org_router, prefix="/api/v1")
+    app.include_router(supplier_router, prefix="/api/v1")
+    from app.modules.catalog.router import router as catalog_router
+    app.include_router(catalog_router, prefix="/api/v1")
 
     @app.middleware("http")
     async def protect_request(request: Request, call_next):
