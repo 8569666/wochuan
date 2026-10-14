@@ -13,7 +13,7 @@ async function logout() { busy.value=true; try { await auth.logout(); await rout
 <template>
   <div class="admin-shell">
     <aside class="sidebar" :class="{expanded:open}">
-      <div class="brand"><strong>沃川</strong><span>W-ERP</span></div><p class="brand-caption">女装连锁总部管理</p>
+      <div class="brand"><strong>我川</strong><span>W-ERP</span></div><p class="brand-caption">女装连锁总部管理</p>
       <nav aria-label="主导航"><router-link v-for="item in links" :key="item.path" :to="item.path" :class="{selected:selected(item.path)}" @click="open=false"><el-icon><component :is="item.icon" /></el-icon>{{item.label}}</router-link></nav>
       <div class="sidebar-footer">基础档案 · 第一阶段</div>
     </aside>

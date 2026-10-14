@@ -1,6 +1,6 @@
 ---
 version: alpha
-name: 沃川 W-ERP
+name: 我川 W-ERP
 description: 女装连锁总部基础档案后台，以清晰规格矩阵和可靠表单为核心。
 colors:
   primary: "#267e78"
@@ -31,7 +31,7 @@ components:
   input: {}
 ---
 
-# 沃川 Design System
+# 我川 Design System
 
 ## Overview
 ### Creative North Star

@@ -1,4 +1,4 @@
-# 沃川后台交互契约
+# 我川后台交互契约
 
 业务来源：已批准foundation-design.md。所有页面共享以下行为，中文locale为zh-CN。
 

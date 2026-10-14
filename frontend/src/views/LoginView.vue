@@ -14,7 +14,7 @@ async function submit() {
 }
 </script>
 <template>
-  <main class="login-page"><section class="login-story"><div class="brand"><strong>沃川</strong><span>W-ERP</span></div><h1>从一款商品，<br>连接每一家门店。</h1><p>商品、门店与供应商档案，<br>在同一个工作台中有序管理。</p><div class="login-line">女装连锁 · 总部管理后台</div></section>
+  <main class="login-page"><section class="login-story"><div class="brand"><strong>我川</strong><span>W-ERP</span></div><h1>从一款商品，<br>连接每一家门店。</h1><p>商品、门店与供应商档案，<br>在同一个工作台中有序管理。</p><div class="login-line">女装连锁 · 总部管理后台</div></section>
   <section class="login-form-panel"><div class="login-form"><h2>登录总部后台</h2><p class="subtext">使用管理员账号进入工作台</p>
   <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :show-message="true" novalidate @submit.prevent="submit">
     <el-form-item label="用户名" prop="username" for="login-username"><el-input id="login-username" v-model="form.username" autocomplete="username" placeholder="请输入管理员用户名" /></el-form-item>

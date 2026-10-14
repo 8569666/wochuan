@@ -23,4 +23,4 @@ router.beforeEach(async to => {
     try { await auth.loadSession() } catch { return {path:'/login',query:{redirect:to.fullPath}} }
   }
 })
-router.afterEach(to => { document.title = `${String(to.meta.title||'总部后台')} · 沃川 W-ERP` })
+router.afterEach(to => { document.title = `${String(to.meta.title||'总部后台')} · 我川 W-ERP` })
