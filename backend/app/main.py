@@ -23,7 +23,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         yield
         await engine.dispose()
 
-    app = FastAPI(title="沃川总部管理后台", version="0.1.0", lifespan=lifespan)
+    app = FastAPI(title="我川总部管理后台", version="0.1.0", lifespan=lifespan)
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
@@ -38,6 +38,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.modules.catalog.router import router as catalog_router
 
     app.include_router(catalog_router, prefix="/api/v1")
+    from app.modules.inventory.router import router as inventory_router
+
+    app.include_router(inventory_router, prefix="/api/v1")
 
     @app.middleware("http")
     async def protect_request(request: Request, call_next):

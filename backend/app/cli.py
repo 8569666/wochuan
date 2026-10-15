@@ -14,7 +14,7 @@ from app.modules.auth.security import hash_password
 
 
 def main():
-    parser = argparse.ArgumentParser(description="沃川后台管理命令")
+    parser = argparse.ArgumentParser(description="我川后台管理命令")
     parser.add_argument("command", choices=["migrate", "init-admin", "bootstrap-local", "check-db"])
     args = parser.parse_args()
     settings = get_settings()

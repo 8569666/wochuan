@@ -1,7 +1,7 @@
 {
   "openapi": "3.1.0",
   "info": {
-    "title": "沃川总部管理后台",
+    "title": "我川总部管理后台",
     "version": "0.1.0"
   },
   "paths": {
@@ -1913,6 +1913,279 @@
         }
       }
     },
+    "/api/v1/purchase-receipts": {
+      "get": {
+        "tags": [
+          "采购与库存"
+        ],
+        "summary": "Receipts",
+        "operationId": "receipts_api_v1_purchase_receipts_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "warehouse_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/purchase-receipts/{record_id}": {
+      "get": {
+        "tags": [
+          "采购与库存"
+        ],
+        "summary": "Receipt Detail",
+        "operationId": "receipt_detail_api_v1_purchase_receipts__record_id__get",
+        "parameters": [
+          {
+            "name": "record_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "title": "Record Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory/movements": {
+      "get": {
+        "tags": [
+          "采购与库存"
+        ],
+        "summary": "Movements",
+        "operationId": "movements_api_v1_inventory_movements_get",
+        "parameters": [
+          {
+            "name": "warehouse_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inventory": {
+      "get": {
+        "tags": [
+          "采购与库存"
+        ],
+        "summary": "Inventory",
+        "operationId": "inventory_api_v1_inventory_get",
+        "parameters": [
+          {
+            "name": "keyword",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "default": "",
+              "title": "Keyword"
+            }
+          },
+          {
+            "name": "warehouse_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Warehouse Id"
+            }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 1,
+              "title": "Page"
+            }
+          },
+          {
+            "name": "page_size",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "default": 20,
+              "title": "Page Size"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/health/live": {
       "get": {
         "summary": "Live",
@@ -2417,6 +2690,16 @@
             ],
             "title": "Min Retail Price"
           },
+          "receiving": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceivingCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "color_ids": {
             "items": {
               "type": "integer"
@@ -2645,6 +2928,16 @@
             ],
             "title": "Min Retail Price"
           },
+          "receiving": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReceivingCreate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sku_prices": {
             "anyOf": [
               {
@@ -2679,6 +2972,84 @@
         "additionalProperties": false,
         "type": "object",
         "title": "ProductUpdate"
+      },
+      "ReceivingCreate": {
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "format": "uuid",
+            "title": "Request Id"
+          },
+          "supplier_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Supplier Id"
+          },
+          "warehouse_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Warehouse Id"
+          },
+          "unit_cost": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0.0
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Unit Cost"
+          },
+          "quantities": {
+            "items": {
+              "$ref": "#/components/schemas/ReceivingQuantity"
+            },
+            "type": "array",
+            "maxItems": 900,
+            "minItems": 1,
+            "title": "Quantities"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "request_id",
+          "supplier_id",
+          "warehouse_id",
+          "unit_cost",
+          "quantities"
+        ],
+        "title": "ReceivingCreate"
+      },
+      "ReceivingQuantity": {
+        "properties": {
+          "color_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Color Id"
+          },
+          "size_id": {
+            "type": "integer",
+            "exclusiveMinimum": 0.0,
+            "title": "Size Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 1000000.0,
+            "minimum": 1.0,
+            "title": "Quantity"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "color_id",
+          "size_id",
+          "quantity"
+        ],
+        "title": "ReceivingQuantity"
       },
       "SKUCreate": {
         "properties": {

@@ -8,15 +8,21 @@ import type { Dictionary, MatrixCell, Product } from '../api/types'
 import { buildMatrix } from '../components/matrix'
 import SkuMatrix from '../components/SkuMatrix.vue'
 import ChoiceList from '../components/ChoiceList.vue'
+import { buildReceiving } from '../components/receiving'
 const route=useRoute();const router=useRouter();const editing=Boolean(route.params.id)
 const form=reactive({code:'',name:'',category:'',year:new Date().getFullYear(),season:'春夏',wave_band:'',fabric_composition:'',safety_category:'B类',tag_price:'',purchase_base_price:'',min_retail_price:''})
 const categoryId=ref<number|null>(null);const fabricId=ref<number|null>(null);const categories=ref<Dictionary[]>([]);const fabrics=ref<Dictionary[]>([]);const commonColors=ref<number[]>([]);const commonGroups=ref<number[]>([]);const originalColors=ref<number[]>([])
+const suppliers=ref<Dictionary[]>([]),warehouses=ref<Dictionary[]>([])
+const receiving=reactive({supplier_id:null as number|null,warehouse_id:null as number|null,unit_cost:''})
+const receivingRequestId=crypto.randomUUID();const costEdited=ref(false)
+watch(()=>form.purchase_base_price,value=>{if(!costEdited.value)receiving.unit_cost=value})
+const incomingTotal=computed(()=>cells.value.reduce((total,cell)=>{const value=Number(cell.incoming_quantity||0);return total+(Number.isSafeInteger(value)&&value>0&&value<=1000000?value:0)},0))
 const colorIds=ref<number[]>([]);const groupId=ref<number|null>(null);const colors=ref<Dictionary[]>([]);const groups=ref<Dictionary[]>([]);const existingSizes=ref<Dictionary[]>([]);const cells=ref<MatrixCell[]>([]);const bulkPrice=ref('');const error=ref('');const loading=ref(false);const busy=ref(false);const formRef=ref<FormInstance>();const saved=ref(false);let initial=''
 const selectedColors=computed(()=>colorIds.value.map(id=>colors.value.find(color=>color.id===id)).filter((color):color is Dictionary=>Boolean(color)))
 const sizes=computed(()=>editing?existingSizes.value:groups.value.find(group=>group.id===groupId.value)?.sizes?.filter(size=>size.status==='ACTIVE')||[])
 const rules={code:[{required:true,message:'请输入款号',trigger:'blur'}],name:[{required:true,message:'请输入款名',trigger:'blur'}],category:[{required:true,message:'请输入品类',trigger:'blur'}],year:[{required:true,message:'请输入年份',trigger:'blur'}],tag_price:[{required:true,message:'请输入吊牌价',trigger:'blur'}]}
 const returnTo=typeof route.query.returnTo==='string'&&/^\/products(?:\?|$)/.test(route.query.returnTo)?route.query.returnTo:'/products'
-function snapshot(){return JSON.stringify({form,categoryId:categoryId.value,fabricId:fabricId.value,colorIds:colorIds.value,groupId:groupId.value,cells:cells.value})}
+function snapshot(){return JSON.stringify({form,receiving,categoryId:categoryId.value,fabricId:fabricId.value,colorIds:colorIds.value,groupId:groupId.value,cells:cells.value})}
 watch([colorIds,groupId],()=>{if(!loading.value)cells.value=buildMatrix(selectedColors.value,sizes.value,cells.value,form.tag_price||'0.00')},{deep:true})
 function chooseCategory(id:number){categoryId.value=id;const category=categories.value.find(item=>item.id===id);form.category=category?.name||'';const remembered=fabrics.value.find(item=>item.id===category?.last_fabric_id&&item.status==='ACTIVE');chooseFabric(remembered?.id)}
 function chooseFabric(id:number|null|undefined){fabricId.value=id||null;form.fabric_composition=fabrics.value.find(item=>item.id===id)?.composition||''}
@@ -24,6 +30,7 @@ async function refreshDictionaries(){
   if(busy.value||loading.value)return
   loading.value=true;error.value=''
   try{
+    ;[suppliers.value,warehouses.value]=await Promise.all([allOptions<Dictionary>('/suppliers'),allOptions<Dictionary>('/warehouses')])
     const [colorData,groupData,categoryData,fabricData,colorPreferences,groupPreferences]=await Promise.all([allOptions<Dictionary>('/colors'),allOptions<Dictionary>('/size-groups'),allOptions<Dictionary>('/categories'),allOptions<Dictionary>('/fabrics'),apiRequest<{ids:number[]}>('/catalog-preferences/colors'),apiRequest<{ids:number[]}>('/catalog-preferences/size-groups')])
     colors.value=[...new Map([...colors.value.filter(item=>colorIds.value.includes(item.id)),...colorData].map(item=>[item.id,item])).values()]
     groups.value=[...new Map([...groups.value.filter(item=>item.id===groupId.value),...groupData].map(item=>[item.id,item])).values()]
@@ -36,6 +43,7 @@ async function refreshDictionaries(){
 async function load(){
   loading.value=true;error.value=''
   try{
+    ;[suppliers.value,warehouses.value]=await Promise.all([allOptions<Dictionary>('/suppliers'),allOptions<Dictionary>('/warehouses')])
     const [colorData,groupData,categoryData,fabricData,colorPreferences,groupPreferences]=await Promise.all([allOptions<Dictionary>('/colors'),allOptions<Dictionary>('/size-groups'),allOptions<Dictionary>('/categories'),allOptions<Dictionary>('/fabrics'),apiRequest<{ids:number[]}>('/catalog-preferences/colors'),apiRequest<{ids:number[]}>('/catalog-preferences/size-groups')]);colors.value=colorData;groups.value=groupData;categories.value=categoryData;fabrics.value=fabricData;commonColors.value=colorPreferences.ids;commonGroups.value=groupPreferences.ids
     if(editing){const product=await apiRequest<Product>(`/products/${route.params.id}`);for(const key of Object.keys(form) as (keyof typeof form)[]){if(key==='year')form.year=product.year;else (form[key] as string)=String(product[key]??'')}
       categoryId.value=typeof product.category_id==='number'?product.category_id:null;fabricId.value=typeof product.fabric_id==='number'?product.fabric_id:null
@@ -54,12 +62,14 @@ async function save(){
   if(!cells.value.length){error.value='请选择颜色和尺码组，生成商品规格';return}
   const prices=[form.tag_price,...cells.value.map(c=>c.retail_price),...(form.purchase_base_price?[form.purchase_base_price]:[]),...(form.min_retail_price?[form.min_retail_price]:[])]
   if(prices.some(p=>!/^\d+(\.\d{1,2})?$/.test(p))){error.value='价格必须为非负金额，最多两位小数';return}
+  let receivingPayload:ReturnType<typeof buildReceiving>
+  try{receivingPayload=buildReceiving(cells.value,receiving,receivingRequestId)}catch(e){error.value=(e as Error).message;return}
   busy.value=true;error.value=''
   if(!categoryId.value){error.value='请选择品类；尚无品类时请先建立品类档案';busy.value=false;return}
-  const base={...form,category_id:categoryId.value,fabric_id:fabricId.value,purchase_base_price:form.purchase_base_price||null,min_retail_price:form.min_retail_price||null}
+  const base={...form,category_id:categoryId.value,fabric_id:fabricId.value,purchase_base_price:form.purchase_base_price||null,min_retail_price:form.min_retail_price||null,...(receivingPayload?{receiving:receivingPayload}:{})}
   const newCells=cells.value.filter(cell=>!cell.id).map(c=>({color_id:c.color_id,size_id:c.size_id,retail_price:c.retail_price,...(c.barcode?{barcode:c.barcode}:{})}))
   const body=editing?{...base,sku_prices:cells.value.filter(c=>c.id).map(c=>({id:c.id,retail_price:c.retail_price})),...(newCells.length?{new_skus:newCells}:{})}:{...base,color_ids:colorIds.value,size_group_id:groupId.value,skus:newCells}
-  try{await apiRequest(`/products${editing?`/${route.params.id}`:''}`,{method:editing?'PATCH':'POST',body:JSON.stringify(body)});saved.value=true;ElMessage.success('商品已保存');await router.push(returnTo)}
+  try{const result=await apiRequest<Product & {receipt?:{number:string}}>(`/products${editing?`/${route.params.id}`:''}`,{method:editing?'PATCH':'POST',body:JSON.stringify(body)});saved.value=true;ElMessage.success(result.receipt?`商品与采购进货已保存，入库单 ${result.receipt.number}`:'商品已保存');await router.push(returnTo)}
   catch(e){error.value=(e as Error).message}finally{busy.value=false}
 }
 onBeforeRouteLeave(async()=>{if(saved.value)return true;if(busy.value)return false;if(!initial||snapshot()===initial)return true;try{await ElMessageBox.confirm('商品信息尚未保存，离开后将丢失。','放弃修改？',{confirmButtonText:'放弃修改',cancelButtonText:'继续编辑',type:'warning'});return true}catch{return false}})
@@ -84,7 +94,8 @@ onMounted(()=>{void load();window.addEventListener('beforeunload',beforeUnload)}
 </div></div>
 <div class="panel editor-panel"><div class="choice-heading"><h2>颜色尺码矩阵</h2><el-button :disabled="busy||loading" @click="refreshDictionaries">刷新字典</el-button></div><div class="product-matrix-layout"><aside class="matrix-choice-sidebar"><ChoiceList v-model="colorIds" v-model:common-ids="commonColors" label="颜色" kind="colors" :items="colors.filter(item=>item.status==='ACTIVE'||originalColors.includes(item.id))" :locked-ids="originalColors" :multiple="true" :disabled="busy" /><router-link to="/colors" target="_blank" class="small-link">管理颜色档案 ↗</router-link><ChoiceList :model-value="groupId?[groupId]:[]" v-model:common-ids="commonGroups" label="尺码组" kind="size-groups" :items="groups" :disabled="editing||busy" @update:model-value="groupId=$event[0]||null" /><router-link to="/size-groups" target="_blank" class="small-link">管理尺码组档案 ↗</router-link></aside><div class="matrix-workspace">
 <div v-if="cells.length" class="matrix-toolbar"><label for="bulk-price">批量填充零售价</label><el-input id="bulk-price" v-model="bulkPrice" inputmode="decimal" placeholder="例如 599.00" /><el-button type="primary" @click="fill">填充</el-button><span role="status">已生成 {{cells.length}} 个规格</span></div>
-<SkuMatrix v-if="cells.length" v-model="cells" :colors="selectedColors" :sizes="sizes" :product-code="form.code" :readonly-dimensions="editing" />
+<section class="receiving-panel"><h3>本次采购进货</h3><p class="field-help">数量留空或0仅保存资料。填数量后，请选择供应商、仓库和进货单价；保存即采购入库，暂不处理付款。</p><div class="form-grid receiving-fields"><el-form-item label="供应商" for="receiving-supplier"><el-select id="receiving-supplier" v-model="receiving.supplier_id" filterable clearable :disabled="busy" placeholder="有进货数量时必选"><el-option v-for="supplier in suppliers" :key="supplier.id" :label="supplier.name" :value="supplier.id"/></el-select></el-form-item><el-form-item label="收货仓库" for="receiving-warehouse"><el-select id="receiving-warehouse" v-model="receiving.warehouse_id" filterable clearable :disabled="busy" placeholder="有进货数量时必选"><el-option v-for="warehouse in warehouses" :key="warehouse.id" :label="warehouse.name" :value="warehouse.id"/></el-select></el-form-item><el-form-item label="进货单价（元）" for="receiving-cost"><el-input id="receiving-cost" v-model="receiving.unit_cost" inputmode="decimal" :disabled="busy" placeholder="默认采购基准价，可修改" @input="costEdited=true"/></el-form-item></div><p class="field-help" role="status">本次进货合计 {{incomingTotal}} 件，按进货单价计入库存成本。</p></section>
+<SkuMatrix v-if="cells.length" v-model="cells" :colors="selectedColors" :sizes="sizes" :product-code="form.code" :readonly-dimensions="editing" :allow-receiving="true" :disabled="busy" />
 <el-empty v-else description="选择颜色和尺码组后，在这里生成规格矩阵。" :image-size="70" />
 <p class="matrix-note">{{editing?'可追加颜色，自动补齐原有全部尺码。已有颜色、尺码组和条码保留，可调整价格。':'内部条码默认使用规格编码；留空即可自动生成。'}}</p>
 </div></div></div></el-form></section></template>

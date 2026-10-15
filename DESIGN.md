@@ -57,7 +57,7 @@ primary用于主要操作与选中导航；sidebar用于导航，background/surf
 面板10px，控件6px，状态标识小圆角；按钮/表单由Element Plus提供统一基础行为。
 
 ## Components
-ArchiveTable拥有列表、查询、分页和错误状态；ArchiveEditor拥有复用档案表单；SkuMatrix拥有逐规格明细，表头为颜色、码数、条码、零售价，进货功能接入后增加数量列。ChoiceList拥有左侧常用颜色/尺码组列表及更多/编辑常用弹窗。品类、面料等单选使用Element Plus Select；颜色不用下拉。表单使用ElForm/ElInput，Toast为ElMessage，确认与未保存导航为ElMessageBox。
+ArchiveTable拥有档案列表、查询、分页和错误状态；ArchiveEditor拥有复用档案表单；SkuMatrix拥有逐规格明细，表头为颜色、码数、条码、零售价、进货数量。ChoiceList拥有左侧常用颜色/尺码组列表及更多/编辑常用弹窗。InventoryView共用采购单/库存/流水只读报表与查询、分页、加载错误反馈；采购明细弹窗独立保护响应顺序。品类、面料等单选使用Element Plus Select；颜色不用下拉。表单使用ElForm/ElInput，Toast为ElMessage，确认与未保存导航为ElMessageBox。
 忙状态保持按钮尺寸，禁用重复提交；键盘focus可见。提交失败保留字段，内联错误提供重试方向。
 
 ## Motion

@@ -5,6 +5,7 @@ from typing import Annotated
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.common.schemas import ArchiveCreate, partial_schema
+from app.modules.inventory.schemas import ReceivingCreate
 
 Money = Annotated[Decimal, Field(ge=0, max_digits=12, decimal_places=2)]
 
@@ -68,6 +69,7 @@ class ProductFields(ArchiveCreate):
 
 
 class ProductCreate(ProductFields):
+    receiving: ReceivingCreate | None = None
     category_id: int = Field(gt=0)
     color_ids: list[int] = Field(min_length=1, max_length=30)
     size_group_id: int = Field(gt=0)
@@ -81,6 +83,7 @@ class SKUPrice(BaseModel):
 
 
 class ProductUpdate(partial_schema(ProductFields)):
+    receiving: ReceivingCreate | None = None
     sku_prices: list[SKUPrice] | None = None
     new_skus: list[SKUCreate] | None = Field(None, min_length=1, max_length=900)
 

@@ -31,5 +31,5 @@ TABLE_OPTIONS = {"mysql_engine": "InnoDB", "mysql_charset": "utf8mb4"}
 def register_models():
     from importlib import import_module
 
-    for module in ("auth", "organization", "suppliers", "catalog", "audit"):
+    for module in ("auth", "organization", "suppliers", "catalog", "audit", "inventory"):
         import_module(f"app.modules.{module}.models")

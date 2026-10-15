@@ -4,6 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.common.archives import commit_record, find_record, record_data
 from app.modules.catalog.models import SKU, Category, Color, Fabric, Product, Size, SizeGroup
+from app.modules.inventory.service import post_receipt, prepare_receipt, receipt_summary
 
 
 async def resolve_product_dictionaries(session, values, existing=None):
@@ -174,6 +175,12 @@ async def product_data(session, product):
 
 
 async def create_product(session, actor, body):
+    receipt, replay_id = await prepare_receipt(session, actor, body)
+    if replay_id:
+        await session.commit()
+        result = await product_data(session, await find_record(session, Product, replay_id))
+        result["receipt"] = receipt_summary(receipt)
+        return result
     group = await session.scalar(
         select(SizeGroup).where(SizeGroup.id == body.size_group_id).with_for_update()
     )
@@ -210,13 +217,14 @@ async def create_product(session, actor, body):
         if len(code) > 64:
             raise HTTPException(422, "生成的规格编码超过64字符，请缩短款号或字典编码")
         sku_values.append({**item.model_dump(), "code": code, "barcode": item.barcode or code})
-    values = body.model_dump(exclude={"color_ids", "skus"})
+    values = body.model_dump(exclude={"color_ids", "skus", "receiving"})
     await resolve_product_dictionaries(session, values)
     product = Product(**values)
     session.add(product)
     try:
         await session.flush()
         session.add_all([SKU(product_id=product.id, **item) for item in sku_values])
+        await post_receipt(session, actor, product, body.receiving, receipt)
         await commit_record(
             session, product, actor, {"code": product.code, "sku_count": len(sku_values)}, "CREATE"
         )
@@ -226,7 +234,9 @@ async def create_product(session, actor, body):
     except Exception:
         await session.rollback()
         raise
-    return await product_data(session, product)
+    result = await product_data(session, product)
+    result["receipt"] = receipt_summary(receipt)
+    return result
 
 
 async def update_product(session, actor, product, body):
@@ -238,11 +248,19 @@ async def update_product(session, actor, product, body):
 
 
 async def _update_product(session, actor, product, body):
+    receipt, replay_id = await prepare_receipt(session, actor, body, product.id)
+    if replay_id:
+        await session.commit()
+        await session.refresh(product)
+        result = await product_data(session, product)
+        result["receipt"] = receipt_summary(receipt)
+        return result
     await session.execute(
         select(SizeGroup).where(SizeGroup.id == product.size_group_id).with_for_update()
     )
     await session.refresh(product, with_for_update=True)
     values = body.model_dump(exclude_unset=True)
+    values.pop("receiving", None)
     if "code" in values and values["code"] != product.code:
         raise HTTPException(409, "商品款号已经生成规格，不能修改")
     sku_prices = values.pop("sku_prices", None)
@@ -262,6 +280,7 @@ async def _update_product(session, actor, product, body):
             if sku.product_id != product.id:
                 raise HTTPException(422, "规格不属于当前商品")
             sku.retail_price = item["retail_price"]
+    await post_receipt(session, actor, product, body.receiving, receipt)
     await commit_record(
         session,
         product,
@@ -269,4 +288,6 @@ async def _update_product(session, actor, product, body):
         {**values, "sku_prices": sku_prices, "new_skus": additions},
         "UPDATE",
     )
-    return await product_data(session, product)
+    result = await product_data(session, product)
+    result["receipt"] = receipt_summary(receipt)
+    return result

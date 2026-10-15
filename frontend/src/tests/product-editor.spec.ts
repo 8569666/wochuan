@@ -64,3 +64,22 @@ it('refreshes changed size definitions without losing draft values',async()=>{
   expect((editor.get('#barcode-1-1').element as HTMLInputElement).value).toBe('CUSTOM-BARCODE')
   expect((editor.get('#product-name').element as HTMLInputElement).value).toBe('保留款名')
 })
+it('requires purchase fields after quantity entry then sends one atomic receiving payload',async()=>{
+  const editor=await open(true)
+  await editor.get('input[aria-label="红色S进货数量"]').setValue('10')
+  const save=editor.findAll('button').find(button=>button.text()==='保存商品')!
+  await save.trigger('click');await flushPromises()
+  expect(editor.get('[role="alert"]').text()).toContain('供应商')
+  expect(vi.mocked(apiRequest).mock.calls.some(([,options])=>options?.method==='PATCH')).toBe(false)
+  const selects=editor.findAllComponents({name:'ElSelect'})
+  selects.find(select=>select.attributes('id')==='receiving-supplier')!.vm.$emit('update:modelValue',1)
+  selects.find(select=>select.attributes('id')==='receiving-warehouse')!.vm.$emit('update:modelValue',2)
+  await editor.get('#receiving-cost').setValue('100.00')
+  await save.trigger('click');await flushPromises()
+  const call=vi.mocked(apiRequest).mock.calls.find(([,options])=>options?.method==='PATCH')!
+  const body=JSON.parse(String(call[1]?.body))
+  expect(body.receiving.quantities).toEqual([{color_id:1,size_id:1,quantity:10}])
+  expect(body.receiving.unit_cost).toBe('100.00')
+  expect(body.receiving.supplier_id).toBe(1)
+  expect(body.receiving.warehouse_id).toBe(2)
+})
