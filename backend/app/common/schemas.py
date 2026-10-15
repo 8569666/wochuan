@@ -37,5 +37,6 @@ def partial_schema(schema):
     for name, field in schema.model_fields.items():
         cloned = copy.deepcopy(field)
         cloned.default = None
+        cloned.default_factory = None
         fields[name] = (field.annotation | None, cloned)
     return create_model(f"{schema.__name__}Update", __base__=schema, **fields)

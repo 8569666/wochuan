@@ -8,8 +8,9 @@ from app.common.archives import archive_router, find_record, list_records, recor
 from app.common.responses import payload
 from app.common.schemas import partial_schema
 from app.models import utcnow
+from app.modules.access.service import AccessDep, redact_cost, require_permission
 from app.modules.audit.service import record_audit
-from app.modules.auth.service import AdminDep, SessionDep
+from app.modules.auth.service import SessionDep
 from app.modules.catalog.models import (
     SKU,
     CatalogPreference,
@@ -31,6 +32,7 @@ from app.modules.catalog.schemas import (
     SizeGroupUpdate,
 )
 from app.modules.catalog.service import (
+    authorize_product_change,
     create_product,
     group_data,
     product_data,
@@ -58,7 +60,8 @@ def preference_model(kind):
 
 
 @router.get("/catalog-preferences/{kind}")
-async def preference_detail(kind: str, session: SessionDep, user: AdminDep):
+async def preference_detail(kind: str, session: SessionDep, user: AccessDep):
+    require_permission(user, "catalog.read", global_scope=False)
     model = preference_model(kind)
     preference = await session.scalar(
         select(CatalogPreference).where(CatalogPreference.kind == kind)
@@ -80,7 +83,10 @@ async def preference_detail(kind: str, session: SessionDep, user: AdminDep):
 
 
 @router.put("/catalog-preferences/{kind}")
-async def preference_update(kind: str, body: PreferenceUpdate, session: SessionDep, user: AdminDep):
+async def preference_update(
+    kind: str, body: PreferenceUpdate, session: SessionDep, user: AccessDep
+):
+    require_permission(user, "catalog.write", global_scope=True)
     model = preference_model(kind)
     active = (
         await session.scalars(
@@ -114,12 +120,13 @@ async def preference_update(kind: str, body: PreferenceUpdate, session: SessionD
 @router.get("/size-groups")
 async def groups(
     session: SessionDep,
-    user: AdminDep,
+    user: AccessDep,
     keyword: str = "",
     status: Literal["ACTIVE", "INACTIVE"] | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
+    require_permission(user, "catalog.read", global_scope=False)
     result = await list_records(session, SizeGroup, keyword, status, page, page_size)
     for item in result["items"]:
         item.update(await group_data(session, await session.get(SizeGroup, item["id"])))
@@ -127,17 +134,20 @@ async def groups(
 
 
 @router.get("/size-groups/{record_id}")
-async def group_detail(record_id: int, session: SessionDep, user: AdminDep):
+async def group_detail(record_id: int, session: SessionDep, user: AccessDep):
+    require_permission(user, "catalog.read", global_scope=False)
     return payload(await group_data(session, await find_record(session, SizeGroup, record_id)))
 
 
 @router.post("/size-groups", status_code=201)
-async def create_group(body: SizeGroupCreate, session: SessionDep, user: AdminDep):
+async def create_group(body: SizeGroupCreate, session: SessionDep, user: AccessDep):
+    require_permission(user, "catalog.write", global_scope=True)
     return payload(await save_group(session, user, body), code=201)
 
 
 @router.patch("/size-groups/{record_id}")
-async def update_group(record_id: int, body: SizeGroupUpdate, session: SessionDep, user: AdminDep):
+async def update_group(record_id: int, body: SizeGroupUpdate, session: SessionDep, user: AccessDep):
+    require_permission(user, "catalog.write", global_scope=True)
     return payload(
         await save_group(session, user, body, await find_record(session, SizeGroup, record_id))
     )
@@ -146,12 +156,13 @@ async def update_group(record_id: int, body: SizeGroupUpdate, session: SessionDe
 @router.get("/products")
 async def products(
     session: SessionDep,
-    user: AdminDep,
+    user: AccessDep,
     keyword: str = "",
     status: Literal["ACTIVE", "INACTIVE"] | None = None,
     page: Annotated[int, Query(ge=1)] = 1,
     page_size: Annotated[int, Query(ge=1, le=100)] = 20,
 ):
+    require_permission(user, "catalog.read", global_scope=False)
     filters = []
     if keyword:
         barcode_ids = select(SKU.product_id).where(SKU.barcode.contains(keyword, autoescape=True))
@@ -179,36 +190,42 @@ async def products(
         count = await session.scalar(
             select(func.count()).select_from(SKU).where(SKU.product_id == item.id)
         )
-        data.append({**record_data(item), "sku_count": count})
+        data.append({**redact_cost(record_data(item), user), "sku_count": count})
     return payload({"items": data, "total": total, "page": page, "page_size": page_size})
 
 
 @router.post("/products", status_code=201)
-async def new_product(body: ProductCreate, session: SessionDep, user: AdminDep):
+async def new_product(body: ProductCreate, session: SessionDep, user: AccessDep):
     return payload(await create_product(session, user, body), code=201)
 
 
 @router.get("/products/{record_id}")
-async def product_detail(record_id: int, session: SessionDep, user: AdminDep):
-    return payload(await product_data(session, await find_record(session, Product, record_id)))
+async def product_detail(record_id: int, session: SessionDep, user: AccessDep):
+    require_permission(user, "catalog.read", global_scope=False)
+    return payload(
+        await product_data(session, await find_record(session, Product, record_id), user)
+    )
 
 
 @router.patch("/products/{record_id}")
-async def product_update(record_id: int, body: ProductUpdate, session: SessionDep, user: AdminDep):
+async def product_update(record_id: int, body: ProductUpdate, session: SessionDep, user: AccessDep):
+    authorize_product_change(user, body)
     return payload(
         await update_product(session, user, await find_record(session, Product, record_id), body)
     )
 
 
 @router.get("/products/{record_id}/skus")
-async def product_skus(record_id: int, session: SessionDep, user: AdminDep):
+async def product_skus(record_id: int, session: SessionDep, user: AccessDep):
+    require_permission(user, "catalog.read", global_scope=False)
     return payload(
-        (await product_data(session, await find_record(session, Product, record_id)))["skus"]
+        (await product_data(session, await find_record(session, Product, record_id), user))["skus"]
     )
 
 
 @router.get("/dashboard/summary")
-async def summary(session: SessionDep, user: AdminDep):
+async def summary(session: SessionDep, user: AccessDep):
+    require_permission(user, "dashboard.read", global_scope=False)
     result = {}
     for name, model in [
         ("stores", Store),
@@ -217,5 +234,25 @@ async def summary(session: SessionDep, user: AdminDep):
         ("products", Product),
         ("skus", SKU),
     ]:
-        result[name] = await session.scalar(select(func.count()).select_from(model))
+        read_permission = {
+            "stores": "store.read",
+            "warehouses": "warehouse.read",
+            "suppliers": "supplier.read",
+            "products": "catalog.read",
+            "skus": "catalog.read",
+        }[name]
+        if not user.has(read_permission):
+            result[name] = 0
+            continue
+        query = select(func.count()).select_from(model)
+        ids = (
+            user.store_ids(read_permission)
+            if name == "stores"
+            else user.warehouse_ids(read_permission)
+            if name == "warehouses"
+            else None
+        )
+        if ids is not None:
+            query = query.where(model.id.in_(ids))
+        result[name] = await session.scalar(query)
     return payload(result)

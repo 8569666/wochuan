@@ -2,11 +2,12 @@ from fastapi import APIRouter, Request, Response
 from sqlalchemy import delete
 
 from app.common.responses import payload
+from app.modules.access.service import AccessDep, build_access
 from app.modules.audit.service import record_audit
 from app.modules.auth.models import LoginSession
 from app.modules.auth.schemas import LoginRequest
 from app.modules.auth.security import token_hash
-from app.modules.auth.service import AdminDep, SessionDep, authenticate, user_data
+from app.modules.auth.service import CurrentUserDep, SessionDep, authenticate, user_data
 
 router = APIRouter(prefix="/auth", tags=["登录"])
 
@@ -25,16 +26,16 @@ async def login(body: LoginRequest, request: Request, response: Response, sessio
         secure=request.app.state.settings.cookie_secure,
         path="/",
     )
-    return payload(user_data(user))
+    return payload(user_data(user, await build_access(session, user)))
 
 
 @router.get("/me")
-async def me(user: AdminDep):
-    return payload(user_data(user))
+async def me(access: AccessDep):
+    return payload(user_data(access.user, access))
 
 
 @router.post("/logout")
-async def logout(request: Request, response: Response, session: SessionDep, user: AdminDep):
+async def logout(request: Request, response: Response, session: SessionDep, user: CurrentUserDep):
     await session.execute(
         delete(LoginSession).where(
             LoginSession.token_hash == token_hash(request.cookies.get("werp_session", ""))

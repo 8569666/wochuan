@@ -7,8 +7,9 @@ from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.common.responses import payload
+from app.modules.access.service import AccessDep, require_permission
 from app.modules.audit.service import record_audit
-from app.modules.auth.service import AdminDep, SessionDep
+from app.modules.auth.service import SessionDep
 
 
 def record_data(record):
@@ -71,25 +72,51 @@ async def list_records(session, model, keyword, status, page, page_size, extra_f
     }
 
 
-def archive_router(path, model, create_schema, update_schema, validator=None):
+def archive_router(
+    path, model, create_schema, update_schema, validator=None, permission=None, scope=None
+):
     router = APIRouter(prefix=path, tags=[path.strip("/")])
+    permission = permission or {
+        "/stores": "store",
+        "/warehouses": "warehouse",
+        "/suppliers": "supplier",
+    }.get(path, "catalog")
+    scope = scope or {"/stores": "store", "/warehouses": "warehouse"}.get(path)
+
+    def read_filter(access):
+        require_permission(access, f"{permission}.read")
+        ids = getattr(access, f"{scope}_ids")(f"{permission}.read") if scope else None
+        return model.id.in_(ids) if ids is not None else None
+
+    def check_detail(access, record_id, write=False):
+        require_permission(
+            access, f"{permission}.{'write' if write else 'read'}", global_scope=write and not scope
+        )
+        if scope:
+            ids = getattr(access, f"{scope}_ids")(f"{permission}.{'write' if write else 'read'}")
+            if ids is not None and record_id not in ids:
+                raise HTTPException(404, "档案不存在")
 
     @router.get("")
     async def listing(
         session: SessionDep,
-        user: AdminDep,
+        user: AccessDep,
         keyword: str = "",
         status: Literal["ACTIVE", "INACTIVE"] | None = None,
         page: Annotated[int, Query(ge=1)] = 1,
         page_size: Annotated[int, Query(ge=1, le=100)] = 20,
     ):
-        return payload(await list_records(session, model, keyword, status, page, page_size))
+        return payload(
+            await list_records(session, model, keyword, status, page, page_size, read_filter(user))
+        )
 
     @router.get("/{record_id}")
-    async def detail(record_id: int, session: SessionDep, user: AdminDep):
+    async def detail(record_id: int, session: SessionDep, user: AccessDep):
+        check_detail(user, record_id)
         return payload(record_data(await find_record(session, model, record_id)))
 
-    async def create_item(body: dict, session: SessionDep, user: AdminDep):
+    async def create_item(body: dict, session: SessionDep, user: AccessDep):
+        require_permission(user, f"{permission}.write", global_scope=True)
         values = body.model_dump()
         if validator:
             await validator(session, values, None)
@@ -98,7 +125,8 @@ def archive_router(path, model, create_schema, update_schema, validator=None):
         await commit_record(session, record, user, values, "CREATE")
         return payload(record_data(record), code=201)
 
-    async def update_item(record_id: int, body: dict, session: SessionDep, user: AdminDep):
+    async def update_item(record_id: int, body: dict, session: SessionDep, user: AccessDep):
+        check_detail(user, record_id, write=True)
         record = await find_record(session, model, record_id)
         values = body.model_dump(exclude_unset=True)
         for key, value in values.items():

@@ -70,4 +70,6 @@ ArchiveTable拥有档案列表、查询、分页和错误状态；ArchiveEditor�
 WCAG 2.2 AA基础目标，输入关联中文label，图标按钮提供aria-label，错误role=alert，结果role=status；不禁用密码粘贴，不以hover作为唯一信息入口。
 
 ## Verification
+人员模块复用现有表单、列表和确认框；PeopleView提供组织树、岗位、员工和角色入口，EmployeeProfile展示任职/异动历史，GrantEditor按中文权限与范围配置授权。员工状态使用待入职、试用、在职、离职中文标签。权限不足时隐藏管理按钮，成本隐藏由服务端与页面共同执行。
+
 真实浏览器检查桌面与窄屏、表单错误与输入保留、Select展开、键盘导航、颜色尺码矩阵。颜色变量由scripts/check-design.mjs对照，静态审计由premium-ui.json配置。

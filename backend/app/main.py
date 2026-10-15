@@ -41,6 +41,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from app.modules.inventory.router import router as inventory_router
 
     app.include_router(inventory_router, prefix="/api/v1")
+    from app.modules.people.router import router as people_router
+
+    app.include_router(people_router, prefix="/api/v1")
 
     @app.middleware("http")
     async def protect_request(request: Request, call_next):

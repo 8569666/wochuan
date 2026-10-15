@@ -3,6 +3,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 
 from app.common.archives import commit_record, find_record, record_data
+from app.modules.access.service import redact_cost, require_permission
 from app.modules.catalog.models import SKU, Category, Color, Fabric, Product, Size, SizeGroup
 from app.modules.inventory.service import post_receipt, prepare_receipt, receipt_summary
 
@@ -156,8 +157,10 @@ async def save_group(session, user, body, existing=None):
     return await group_data(session, group)
 
 
-async def product_data(session, product):
+async def product_data(session, product, access=None):
     result = record_data(product)
+    if access is not None:
+        result = redact_cost(result, access)
     rows = (
         await session.execute(
             select(SKU, Color, Size)
@@ -174,13 +177,38 @@ async def product_data(session, product):
     return result
 
 
+def authorize_product_change(actor, body, creating=False):
+    # Internal legacy callers may pass a User; HTTP handlers always pass AccessContext.
+    if not hasattr(actor, "has"):
+        if actor.role != "ADMIN":
+            raise HTTPException(403, "没有操作权限")
+        return
+    fields = body.model_dump(exclude_unset=True)
+    if creating or set(fields) - {"receiving"} or not body.receiving:
+        require_permission(actor, "catalog.write", global_scope=True)
+    if body.receiving:
+        require_permission(actor, "purchase.receive")
+        if not actor.allows_warehouse("purchase.receive", body.receiving.warehouse_id):
+            raise HTTPException(403, "没有目标仓库的入库权限")
+
+
+def protect_product_result(result, actor):
+    if not hasattr(actor, "has"):
+        return result
+    result = redact_cost(result, actor)
+    if result.get("receipt"):
+        result["receipt"] = redact_cost(result["receipt"], actor, result["receipt"]["warehouse_id"])
+    return result
+
+
 async def create_product(session, actor, body):
+    authorize_product_change(actor, body, creating=True)
     receipt, replay_id = await prepare_receipt(session, actor, body)
     if replay_id:
         await session.commit()
         result = await product_data(session, await find_record(session, Product, replay_id))
         result["receipt"] = receipt_summary(receipt)
-        return result
+        return protect_product_result(result, actor)
     group = await session.scalar(
         select(SizeGroup).where(SizeGroup.id == body.size_group_id).with_for_update()
     )
@@ -236,10 +264,11 @@ async def create_product(session, actor, body):
         raise
     result = await product_data(session, product)
     result["receipt"] = receipt_summary(receipt)
-    return result
+    return protect_product_result(result, actor)
 
 
 async def update_product(session, actor, product, body):
+    authorize_product_change(actor, body)
     try:
         return await _update_product(session, actor, product, body)
     except IntegrityError:
@@ -254,7 +283,7 @@ async def _update_product(session, actor, product, body):
         await session.refresh(product)
         result = await product_data(session, product)
         result["receipt"] = receipt_summary(receipt)
-        return result
+        return protect_product_result(result, actor)
     await session.execute(
         select(SizeGroup).where(SizeGroup.id == product.size_group_id).with_for_update()
     )
@@ -290,4 +319,4 @@ async def _update_product(session, actor, product, body):
     )
     result = await product_data(session, product)
     result["receipt"] = receipt_summary(receipt)
-    return result
+    return protect_product_result(result, actor)

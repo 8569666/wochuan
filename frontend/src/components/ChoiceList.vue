@@ -9,12 +9,12 @@ const common=computed(()=>props.commonIds.map(id=>props.items.find(item=>item.id
 const selectedExtra=computed(()=>props.items.filter(item=>props.modelValue.includes(item.id)&&!props.commonIds.includes(item.id)))
 const results=computed(()=>props.items.filter(item=>`${item.name} ${item.code}`.toLowerCase().includes(search.value.toLowerCase())))
 function choose(id:number){if(props.disabled||props.lockedIds?.includes(id))return;emit('update:modelValue',props.multiple?(props.modelValue.includes(id)?props.modelValue.filter(value=>value!==id):[...props.modelValue,id]):[id])}
-function open(edit:boolean){editing.value=edit;draft.value=[...props.commonIds];search.value='';error.value='';dialog.value=true}
+function open(edit:boolean){if(props.disabled)return;editing.value=edit;draft.value=[...props.commonIds];search.value='';error.value='';dialog.value=true}
 function toggleCommon(id:number){if(draft.value.includes(id))draft.value=draft.value.filter(value=>value!==id);else if(draft.value.length<10)draft.value.push(id);else error.value='最多10个常用选项，请先移除一个再替换'}
 function move(index:number,offset:number){const next=[...draft.value];const target=index+offset;if(target<0||target>=next.length)return;[next[index],next[target]]=[next[target]!,next[index]!];draft.value=next}
 async function saveCommon(){if(busy.value)return;busy.value=true;error.value='';try{const result=await apiRequest<{ids:number[]}>(`/catalog-preferences/${props.kind}`,{method:'PUT',body:JSON.stringify({ids:draft.value})});emit('update:commonIds',result.ids);dialog.value=false}catch(e){error.value=(e as Error).message}finally{busy.value=false}}
 </script>
-<template><section class="choice-panel"><div class="choice-heading"><h3>常用{{label}}</h3><el-button text :aria-label="`编辑常用${label}`" @click="open(true)">编辑常用</el-button></div>
+<template><section class="choice-panel"><div class="choice-heading"><h3>常用{{label}}</h3><el-button text :disabled="disabled" :aria-label="`编辑常用${label}`" @click="open(true)">编辑常用</el-button></div>
 <p class="field-help">{{kind==='colors'?'最多10个常用颜色，可多选。':'点选一个尺码组，可维护常用顺序。'}}</p>
 <div class="choice-list" :aria-label="`${label}列表`"><button v-for="item in [...common,...selectedExtra]" :key="item.id" type="button" class="choice-item" :class="{'is-selected':modelValue.includes(item.id)}" :aria-label="item.name" :aria-pressed="modelValue.includes(item.id)" :disabled="disabled||lockedIds?.includes(item.id)" @click="choose(item.id)"><span v-if="kind==='colors'" class="color-swatch" :style="{backgroundColor:item.hex_value||'#cbd5e1'}"/><span>{{item.name}}</span><span v-if="modelValue.includes(item.id)" aria-hidden="true">✓</span><small v-if="lockedIds?.includes(item.id)">已有</small></button></div>
 <p v-if="!common.length" class="field-help">尚未配置常用{{label}}</p><el-button :disabled="disabled" @click="open(false)">更多{{label}}</el-button>

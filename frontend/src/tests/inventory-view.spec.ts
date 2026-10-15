@@ -3,10 +3,23 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import ElementPlus, { ElDialog } from 'element-plus'
 import InventoryView from '../views/InventoryView.vue'
-import { apiRequest } from '../api/client'
+import { apiRequest,allOptions } from '../api/client'
+import { createPinia,setActivePinia } from 'pinia'
+import { useAuthStore } from '../stores/auth'
 vi.mock('../api/client',()=>({apiRequest:vi.fn(),allOptions:vi.fn().mockResolvedValue([])}))
 beforeEach(()=>{vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}})})
 afterEach(()=>{vi.clearAllMocks();vi.unstubAllGlobals()})
+it('inventory reader without warehouse-read sees report without unauthorized option fetch',async()=>{
+  const pinia=createPinia();setActivePinia(pinia);useAuthStore().user={id:2,username:'reader',display_name:'库存员',role:'STAFF',permissions:['inventory.read'],global_permissions:[]}
+  vi.mocked(apiRequest).mockResolvedValue({items:[],total:0,page:1,page_size:20})
+  vi.mocked(allOptions).mockRejectedValue(new Error('没有仓库读取权限'))
+  const router=createRouter({history:createMemoryHistory(),routes:[{path:'/inventory',component:InventoryView}]});await router.push('/inventory');await router.isReady()
+  const view=mount(InventoryView,{props:{mode:'inventory'},global:{plugins:[pinia,ElementPlus,router]}});await flushPromises()
+  expect(allOptions).not.toHaveBeenCalled()
+  expect(view.find('[role="alert"]').exists()).toBe(false)
+  expect(view.text()).toContain('暂无库存记录')
+  view.unmount();vi.mocked(allOptions).mockResolvedValue([])
+})
 it('shows read failure instead of claiming stock is empty',async()=>{
   vi.mocked(apiRequest).mockRejectedValue(new Error('数据库暂时不可用'))
   const router=createRouter({history:createMemoryHistory(),routes:[{path:'/inventory',component:InventoryView}]});await router.push('/inventory');await router.isReady()

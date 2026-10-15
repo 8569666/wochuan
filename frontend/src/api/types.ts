@@ -1,6 +1,6 @@
 export interface ApiResponse<T> { code: number; message: string; data: T; timestamp: number }
 export interface Page<T> { items: T[]; total: number; page: number; page_size: number }
-export interface User { id: number; username: string; display_name: string; role: string }
+export interface User { id: number; username: string; display_name: string; role: string; employee_id?:number|null; permissions?:string[]; global_permissions?:string[]; is_admin?:boolean }
 export interface Archive { id: number; code: string; name: string; status: 'ACTIVE'|'INACTIVE'; [key: string]: unknown }
 export interface Dictionary extends Archive { hex_value?: string|null; sizes?: Dictionary[]; composition?:string; last_fabric_id?:number|null }
 export interface MatrixCell { id?: number; color_id: number; size_id: number; retail_price: string; barcode?: string; code?: string; incoming_quantity?:string }

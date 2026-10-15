@@ -5,7 +5,8 @@ from sqlalchemy import func, or_, select
 
 from app.common.archives import find_record, record_data
 from app.common.responses import payload
-from app.modules.auth.service import AdminDep, SessionDep
+from app.modules.access.service import AccessDep, redact_cost, require_permission
+from app.modules.auth.service import SessionDep
 from app.modules.catalog.models import SKU, Color, Product, Size
 from app.modules.inventory.models import (
     PurchaseReceipt,
@@ -42,7 +43,7 @@ def sku_fields():
 @router.get("/purchase-receipts")
 async def receipts(
     session: SessionDep,
-    user: AdminDep,
+    user: AccessDep,
     keyword: str = "",
     warehouse_id: Annotated[int | None, Query(gt=0)] = None,
     page: PageNumber = 1,
@@ -61,6 +62,10 @@ async def receipts(
         .join(Product, PurchaseReceipt.product_id == Product.id)
         .where(PurchaseReceipt.status == "POSTED")
     )
+    require_permission(user, "purchase.read")
+    allowed_ids = user.warehouse_ids("purchase.read")
+    if allowed_ids is not None:
+        query = query.where(PurchaseReceipt.warehouse_id.in_(allowed_ids))
     if keyword:
         query = query.where(
             or_(
@@ -79,7 +84,7 @@ async def receipts(
         {
             "items": [
                 {
-                    **record_data(row[0]),
+                    **redact_cost(record_data(row[0]), user, row[0].warehouse_id),
                     **{
                         key: value
                         for key, value in row._mapping.items()
@@ -96,8 +101,11 @@ async def receipts(
 
 
 @router.get("/purchase-receipts/{record_id}")
-async def receipt_detail(record_id: int, session: SessionDep, user: AdminDep):
+async def receipt_detail(record_id: int, session: SessionDep, user: AccessDep):
+    require_permission(user, "purchase.read")
     receipt = await find_record(session, PurchaseReceipt, record_id)
+    if not user.allows_warehouse("purchase.read", receipt.warehouse_id):
+        raise HTTPException(404, "采购入库单不存在")
     if receipt.status != "POSTED":
         raise HTTPException(404, "采购入库单不存在")
     supplier = await find_record(session, Supplier, receipt.supplier_id)
@@ -119,12 +127,12 @@ async def receipt_detail(record_id: int, session: SessionDep, user: AdminDep):
     ).all()
     return payload(
         {
-            **record_data(receipt),
+            **redact_cost(record_data(receipt), user, receipt.warehouse_id),
             "supplier_name": supplier.name,
             "warehouse_name": warehouse.name,
             "lines": [
                 {
-                    **record_data(row[0]),
+                    **redact_cost(record_data(row[0]), user, receipt.warehouse_id),
                     "barcode": row.barcode,
                     "color_name": row.color_name,
                     "size_name": row.size_name,
@@ -138,7 +146,7 @@ async def receipt_detail(record_id: int, session: SessionDep, user: AdminDep):
 @router.get("/inventory/movements")
 async def movements(
     session: SessionDep,
-    user: AdminDep,
+    user: AccessDep,
     warehouse_id: Annotated[int | None, Query(gt=0)] = None,
     page: PageNumber = 1,
     page_size: PageSize = 20,
@@ -153,6 +161,10 @@ async def movements(
         .join(Size, SKU.size_id == Size.id)
         .join(Warehouse, StockMovement.warehouse_id == Warehouse.id)
     )
+    require_permission(user, "inventory.read")
+    allowed_ids = user.warehouse_ids("inventory.read")
+    if allowed_ids is not None:
+        query = query.where(StockMovement.warehouse_id.in_(allowed_ids))
     if warehouse_id:
         query = query.where(StockMovement.warehouse_id == warehouse_id)
     total, rows = await page_rows(session, query.order_by(StockMovement.id.desc()), page, page_size)
@@ -160,7 +172,7 @@ async def movements(
         {
             "items": [
                 {
-                    **record_data(row[0]),
+                    **redact_cost(record_data(row[0]), user, row[0].warehouse_id),
                     **{key: value for key, value in row._mapping.items() if key != "StockMovement"},
                 }
                 for row in rows
@@ -175,7 +187,7 @@ async def movements(
 @router.get("/inventory")
 async def inventory(
     session: SessionDep,
-    user: AdminDep,
+    user: AccessDep,
     keyword: str = "",
     warehouse_id: Annotated[int | None, Query(gt=0)] = None,
     page: PageNumber = 1,
@@ -189,6 +201,10 @@ async def inventory(
         .join(Size, SKU.size_id == Size.id)
         .join(Warehouse, StockBalance.warehouse_id == Warehouse.id)
     )
+    require_permission(user, "inventory.read")
+    allowed_ids = user.warehouse_ids("inventory.read")
+    if allowed_ids is not None:
+        query = query.where(StockBalance.warehouse_id.in_(allowed_ids))
     if warehouse_id:
         query = query.where(StockBalance.warehouse_id == warehouse_id)
     if keyword:
@@ -203,10 +219,10 @@ async def inventory(
     items = []
     for row in rows:
         item = {
-            **record_data(row[0]),
+            **redact_cost(record_data(row[0]), user, row[0].warehouse_id),
             **{key: value for key, value in row._mapping.items() if key != "StockBalance"},
         }
         item["average_cost"] = format(row[0].average_cost, ".4f")
         item["total_cost"] = format(row[0].total_cost, ".4f")
-        items.append(item)
+        items.append(redact_cost(item, user, row[0].warehouse_id))
     return payload({"items": items, "total": total, "page": page, "page_size": page_size})

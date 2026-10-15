@@ -1,3 +1,5 @@
+import { createPinia,setActivePinia } from 'pinia'
+import { useAuthStore } from '../stores/auth'
 import { afterEach, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -16,7 +18,8 @@ const product={id:1,code:'P1',name:'测试商品',category:'裙装',category_id:
 const SelectStub=defineComponent({name:'ElSelect',props:['modelValue','id'],emits:['update:modelValue'],template:'<select :id="id" :value="modelValue"><slot /></select>'})
 let wrapper:ReturnType<typeof mount>|undefined
 afterEach(()=>{wrapper?.unmount();vi.clearAllMocks();vi.unstubAllGlobals();document.body.innerHTML=''})
-async function open(editing=false){
+async function open(editing=false,staff=false,receivingOptions=true){
+  setActivePinia(createPinia());useAuthStore().user=staff?{id:2,username:'receiver',display_name:'收货员',role:'STAFF',permissions:['catalog.read','purchase.receive',...(receivingOptions?['supplier.read','warehouse.read']:[])],global_permissions:[]}:{id:1,username:'admin',display_name:'管理员',role:'ADMIN'}
   vi.stubGlobal('ResizeObserver',class{observe(){}unobserve(){}disconnect(){}})
   vi.mocked(allOptions).mockImplementation(async path=>({'/categories':categories,'/fabrics':fabrics,'/colors':colors,'/size-groups':[{id:1,code:'STD',name:'标准尺码',status:'ACTIVE',sizes}]}[path]||[]) as never)
   vi.mocked(apiRequest).mockImplementation(async(path,options)=>{if(options?.method)return product as never;if(path==='/products/1')return product as never;return {ids:[1,2]} as never})
@@ -32,6 +35,32 @@ it('uses the category shared default after selection and keeps existing product 
   await flushPromises()
   expect(selects.find(select=>select.attributes('id')==='product-fabric')?.props('modelValue')).toBe(2)
   expect(editor.text()).toContain('100%羊毛')
+})
+it('allows receiver quantities while keeping all product prices read only and sends receiving only',async()=>{
+  const editor=await open(true,true)
+  expect(editor.get('#price-1-1').attributes('readonly')).toBeDefined()
+  expect(editor.find('#product-purchase-price').exists()).toBe(false)
+  await editor.get('input[aria-label="红色S进货数量"]').setValue('2')
+  const vm=editor.findComponent(ProductEditor).vm as unknown as {receiving:{supplier_id:number;warehouse_id:number;unit_cost:string}}
+  vm.receiving.supplier_id=1;vm.receiving.warehouse_id=2;vm.receiving.unit_cost='10.00'
+  await editor.findAll('button').find(button=>button.text()==='保存商品')!.trigger('click');await flushPromises()
+  const call=vi.mocked(apiRequest).mock.calls.find(([,options])=>options?.method==='PATCH')!
+  expect(Object.keys(JSON.parse(String(call[1]?.body)))).toEqual(['receiving'])
+})
+it('catalog writer without cost permission omits purchase price from product PATCH',async()=>{
+  const editor=await open(true,true)
+  useAuthStore().user={id:2,username:'writer',display_name:'商品员',role:'STAFF',permissions:['catalog.read','catalog.write'],global_permissions:['catalog.write']}
+  await flushPromises()
+  expect(editor.find('#product-purchase-price').exists()).toBe(false)
+  await editor.findAll('button').find(button=>button.text()==='保存商品')!.trigger('click');await flushPromises()
+  const call=vi.mocked(apiRequest).mock.calls.find(([,options])=>options?.method==='PATCH')!
+  expect(call).toBeDefined()
+  expect(JSON.parse(String(call[1]?.body))).not.toHaveProperty('purchase_base_price')
+})
+it('receiver missing option-read rights sees an explanation without forbidden option requests',async()=>{
+  const editor=await open(true,true,false)
+  expect(editor.text()).toContain('采购进货需要供应商读取与仓库读取权限')
+  expect(vi.mocked(allOptions).mock.calls.some(([path])=>path==='/suppliers'||path==='/warehouses')).toBe(false)
 })
 it('adds new color cells and submits only additions while preserving old sku identities',async()=>{
   const editor=await open(true)

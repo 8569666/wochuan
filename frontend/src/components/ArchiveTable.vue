@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { InputInstance } from 'element-plus'
 import { Search, Plus } from '@element-plus/icons-vue'
 import { apiRequest } from '../api/client'
 import type { Archive, FieldSpec, Page } from '../api/types'
+import { useAccess, archivePermission } from '../access'
 import ArchiveEditor from './ArchiveEditor.vue'
 const props=defineProps<{path:string;title:string;label:string;description:string;fields:FieldSpec[];columns:FieldSpec[];productRoute?:boolean;searchPlaceholder?:string}>()
+const access=useAccess();const canWrite=computed(()=>['/stores','/warehouses'].includes(props.path)?access.has(archivePermission(props.path)):access.hasGlobal(archivePermission(props.path)))
 const route=useRoute();const router=useRouter()
 const keyword=ref(String(route.query.keyword||''));const status=ref(String(route.query.status||''));const page=ref(Math.max(1,Number(route.query.page)||1));const pageSize=ref([20,50,100].includes(Number(route.query.page_size))?Number(route.query.page_size):20)
 const rows=ref<Archive[]>([]);const total=ref(0);const loading=ref(false);const error=ref('');const dialog=ref(false);const current=ref<Archive|null>(null);const rowBusy=ref<number|null>(null)
@@ -33,14 +35,14 @@ async function toggle(row:Archive){
 function display(row:Archive,field:FieldSpec){const value=row[field.key];if(field.kind==='sizes'&&Array.isArray(value))return value.map(v=>v.name).join(' / ');return field.options?.find(option=>option.value===value)?.label||String(value??'—')}
 watch(keyword,search);watch(status,()=>{page.value=1;void load()});onMounted(load);onBeforeUnmount(()=>{revision++;controller?.abort();clearTimeout(timer)})
 </script>
-<template><section><div class="page-heading"><div><h1>{{title}}</h1><p>{{description}}</p></div><div class="heading-actions"><slot name="actions"/><el-button type="primary" :icon="Plus" @click="edit(null)">新建{{label}}</el-button></div></div>
+<template><section><div class="page-heading"><div><h1>{{title}}</h1><p>{{description}}</p></div><div class="heading-actions"><slot name="actions"/><el-button v-if="canWrite" type="primary" :icon="Plus" @click="edit(null)">新建{{label}}</el-button></div></div>
 <div class="panel"><div class="table-toolbar"><el-input ref="searchRef" v-model="keyword" :prefix-icon="Search" :placeholder="searchPlaceholder||'搜索编码或名称'" :aria-label="searchPlaceholder||'搜索编码或名称'" @keyup.enter="clearSearch" @compositionstart="composing=true" @compositionend="composing=false;search()" /><el-button v-if="keyword" text aria-label="清除搜索" @click="keyword='';searchRef?.focus()">清除</el-button><el-select v-model="status" aria-label="筛选档案状态" clearable placeholder="全部状态"><el-option label="启用" value="ACTIVE"/><el-option label="停用" value="INACTIVE"/></el-select><el-button :loading="loading" @click="load">刷新</el-button></div>
 <div v-if="error" class="error-state" role="alert"><p>{{error}}</p><el-button @click="load">重试</el-button></div>
 <el-table v-else :data="rows" v-loading="loading" class="archive-table" :empty-text="loading?'正在加载…':keyword||status?'没有匹配的档案，请调整筛选条件':'暂无档案，点击右上角新建'" row-key="id">
   <el-table-column v-for="column in columns" :key="column.key" :label="column.label" :min-width="column.key==='name'?180:140"><template #default="{row}"><span :class="{code:column.key==='code'}">{{display(row,column)}}</span></template></el-table-column>
   <el-table-column label="状态" width="100"><template #default="{row}"><span class="state-label" :class="{inactive:row.status==='INACTIVE'}">{{row.status==='ACTIVE'?'启用':'停用'}}</span></template></el-table-column>
-  <el-table-column label="操作" width="155" fixed="right"><template #default="{row}"><el-button text type="primary" @click="edit(row)">编辑</el-button><el-button text :type="row.status==='ACTIVE'?'danger':'primary'" :loading="rowBusy===row.id" :disabled="rowBusy!==null&&rowBusy!==row.id" @click="toggle(row)">{{row.status==='ACTIVE'?'停用':'启用'}}</el-button></template></el-table-column>
+  <el-table-column label="操作" width="155" fixed="right"><template #default="{row}"><el-button text type="primary" @click="edit(row)">{{canWrite?'编辑':'查看'}}</el-button><el-button v-if="canWrite" text :type="row.status==='ACTIVE'?'danger':'primary'" :loading="rowBusy===row.id" :disabled="rowBusy!==null&&rowBusy!==row.id" @click="toggle(row)">{{row.status==='ACTIVE'?'停用':'启用'}}</el-button></template></el-table-column>
 </el-table>
 <div class="pagination"><span role="status">共 {{total}} 条档案</span><el-pagination v-model:current-page="page" v-model:page-size="pageSize" :page-sizes="[20,50,100]" layout="sizes, prev, pager, next" :total="total" @current-change="load" @size-change="page=1;load()" /></div></div>
-<ArchiveEditor v-model="dialog" :record="current" :path="path" :label="label" :fields="fields" @saved="load" />
+<ArchiveEditor v-model="dialog" :record="current" :path="path" :label="label" :fields="fields" :readonly="!canWrite" @saved="load" />
 </section></template>

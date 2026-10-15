@@ -15,6 +15,9 @@ class User(Record, Base):
     password_hash: Mapped[str] = mapped_column(String(256))
     role: Mapped[str] = mapped_column(String(32), default="ADMIN")
     status: Mapped[str] = mapped_column(String(16), default="ACTIVE")
+    employee_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("werp_employees.id"), unique=True, nullable=True
+    )
 
 
 class LoginSession(Record, Base):

@@ -38,7 +38,9 @@
 首次安装数据为空，工作台指引建立门店/仓库/供应商/商品，不注入样例或虚构指标。
 
 ## Input and localization
-编码ASCII、名称中文、金额字符串人民币、时间上海时区；数字不能用浮点计算。ElConfigProvider zh-CN统一分页和控件文案。select由ElSelect统一拥有，日期首批只有年份文本输入，没有日历需求。
+编码ASCII、名称中文、金额字符串人民币、时间上海时区；数字不能用浮点计算。ElConfigProvider zh-CN统一分页和控件文案。select由ElSelect统一拥有；人员入职/异动日期使用ElDatePicker，提交YYYY-MM-DD，不做未来自动生效。
+
+人员操作区分基本资料修改与任职异动。调岗确认说明退出登录、撤销旧授权及未配置新授权时仅可查看本人；离职确认说明账号立即停用。所有失败保留输入。账号与授权仅管理员可见，密码不展示在列表或日志，重置成功后旧会话失效。
 
 ## Resilience and accessibility
 错误内联role=alert，成功反馈统一ElMessage及status live区。无秘密出现在URL、日志和界面错误。
